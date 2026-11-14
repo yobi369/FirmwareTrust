@@ -123,7 +123,12 @@ Deno.serve(async (request: Request) => {
       return respond({ error: "The signing key is not currently active and trusted", key_status: key.status }, 422);
     }
 
-    const verification = await verifyEd25519Manifest(manifest, String(key.public_key_pem));
+    let verification;
+    try {
+      verification = await verifyEd25519Manifest(manifest, String(key.public_key_pem));
+    } catch {
+      return respond({ error: "Manifest Ed25519 signature material is malformed" }, 422);
+    }
     if (!verification.valid) return respond({ error: "Manifest Ed25519 signature verification failed" }, 422);
     const manifestDigest = verification.manifestSha256;
     const signatureDigest = verification.signatureSha256;
