@@ -49,6 +49,19 @@ begin
   insert into public.releases(organization_id,project_id,version,artifact_name,artifact_sha256,manifest,status,created_by)
   values(org_a,project_a,'0.0.1','test-firmware.bin',repeat('a',64),jsonb_build_object('source','integration-test'),'draft',owner_id)
   returning id into release_a;
+
+  begin
+    insert into public.release_verification_attestations(organization_id,project_id,release_id,key_fingerprint,algorithm,manifest_sha256,signature_sha256,verifier_version)
+    values(org_a,project_a,release_a,repeat('a',16),'Ed25519',repeat('b',64),repeat('c',64),'integration-test');
+    raise exception 'FAIL: authenticated owner directly inserted a verification attestation';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.register_verified_release(org_a,project_a,'0.0.2','forged.bin',repeat('d',64),'{}'::jsonb,owner_id,repeat('a',16),repeat('b',64),repeat('c',64));
+    raise exception 'FAIL: authenticated owner called the service-only verified registration RPC';
+  exception when insufficient_privilege then null;
+  end;
+
   if not exists(select 1 from public.audit_events where organization_id=org_a and action='release.registered' and resource_id=release_a::text) then
     raise exception 'FAIL: release registration was not audited';
   end if;
