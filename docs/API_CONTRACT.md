@@ -1,6 +1,6 @@
 # FirmwareTrust API Contract
 
-**Status:** Proposed contract for implementation. Endpoints below are not yet deployed.
+**Status:** Proposed unified /api/v1 contract. The versioned routes below are not yet deployed; the currently deployed Supabase Edge Function, PostgREST and RPC paths are documented where relevant.
 
 Base path: `/api/v1`. All tenant operations require an authenticated user session or scoped API token. The server derives the organization from authorized membership or token scope; clients must not be allowed to choose an arbitrary organization ID as an authorization shortcut.
 
@@ -53,7 +53,7 @@ Use standard HTTP status codes: 400 malformed input, 401 unauthenticated, 403 un
 | POST | `/releases/{releaseId}/evaluate` | Evaluate active release policy | `policies:evaluate` |
 | POST | `/releases/{releaseId}/publish` | Publish an approved immutable release | `releases:publish` |
 
-Release creation requires an idempotency key and includes artifact digest, size, manifest, source revision and optional SBOM reference. The deployed Supabase Edge Function `POST /functions/v1/register-release` requires a valid user JWT, checks organization/project membership through RLS, verifies the Ed25519 manifest against an active registered public key, binds the signed registry scope to the selected organization/project, and inserts a draft release. A database trigger appends the release registration audit event in the same transaction. The service must not trust client-supplied `verified: true` flags. The current UI also permits explicitly marked unsigned metadata-only drafts; these are not cryptographically verified.
+Release creation requires an idempotency key and includes artifact digest, size, manifest, source revision and optional SBOM reference. The deployed Supabase Edge Function `POST /functions/v1/register-release` requires a valid user JWT, validates the caller's organization role and project membership, verifies the Ed25519 manifest against an active registered public key, and binds the signed registry scope to the selected organization/project. It then calls the service-role-only `POST /rest/v1/rpc/register_verified_release` RPC, which atomically inserts the draft release and immutable verification attestation. The attestation stores the key fingerprint, canonical payload digest, signature digest, verifier version and server-side verification time; a database trigger validates tenant scope, artifact metadata and key validity. Authenticated clients cannot call the trusted registration RPC or insert attestations directly. The service must not trust client-supplied `verified: true` flags. The UI also permits explicitly marked unsigned metadata-only drafts; these cannot satisfy a signed-manifest policy or be published.
 
 ## Key lifecycle
 
@@ -92,7 +92,7 @@ Ingestion is asynchronous for large documents. Responses expose `queued`, `proce
 | GET | `/organizations/{orgId}/reports/security` | Key, SBOM and vulnerability report | `reports:read` |
 | GET | `/organizations/{orgId}/audit-events` | Filtered audit history | `audit:read` |
 
-Approval decisions bind to release digest, manifest digest and policy version. A changed release or policy requires new evaluation and approvals. The author cannot approve their own release when separation of duties is enabled.
+Implemented database behavior: an owner/admin/release manager requests review, pinning the exact applicable immutable policy version. Independent owner/admin/release-manager/security-analyst reviewers may submit one immutable approve/reject decision per release and policy version; the release author cannot approve their own release. Policy evaluation checks the pinned policy, SBOM scan completeness, vulnerability thresholds, attestation and independent approval quorum. Release identity, artifact digest and manifest are immutable after registration. The SECURITY INVOKER `POST /rest/v1/rpc/publish_release` RPC publishes only approved releases with a matching server-created attestation and a fresh passing policy evaluation; the database transition trigger repeats these checks. The proposed /api/v1 approval routes are not yet deployed.
 
 ## CI/CD integrations
 
@@ -123,4 +123,4 @@ Webhook requests include a timestamp and HMAC signature over the raw request bod
 
 ## Compatibility and versioning
 
-The API is versioned by path. Additive optional fields are backward-compatible. Breaking changes require a new major path and a published migration window. All write endpoints should accept an `Idempotency-Key` header and return a request correlation ID.
+The proposed unified API is versioned by path. Additive optional fields are backward-compatible. Breaking changes require a new major path and a published migration window. The currently deployed Supabase endpoints are not yet normalized behind /api/v1, and idempotency keys/correlation IDs remain to be implemented across the unified API.
