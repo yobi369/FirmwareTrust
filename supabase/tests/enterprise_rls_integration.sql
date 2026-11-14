@@ -51,7 +51,7 @@ begin
 
   begin
     insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
-    values(org_a,fp_a,'Ed25519','-----BEGIN PRIVATE KEY-----' || E'\n' || 'ZmFrZQ==' || E'\n-----END PRIVATE KEY-----','active',owner_id);
+    values(org_a,fp_a,'Ed25519','-----BEGIN PRIVATE KEY-----' || E'\n' || repeat('A',80) || E'\n-----END PRIVATE KEY-----','active',owner_id);
     raise exception 'FAIL: private key PEM was accepted';
   exception when raise_exception then
     if sqlerrm like 'FAIL:%' then raise; end if;
