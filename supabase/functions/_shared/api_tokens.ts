@@ -21,7 +21,7 @@ export function apiTokenAllows(
   requiredScope: string,
   now = Date.now(),
 ): boolean {
-  if (!secret.startsWith("ft_live_") || record.revoked_at !== null) return false;
+  if (!secret.startsWith("ft_live_") || record.revoked_at != null) return false;
   if (!record.id || !record.created_by || record.organization_id !== organizationId) return false;
   if (!Array.isArray(record.scopes) || !record.scopes.includes(requiredScope)) return false;
   if (!Array.isArray(record.project_ids) || (record.project_ids.length > 0 && !record.project_ids.includes(projectId))) return false;
