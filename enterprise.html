@@ -21,7 +21,7 @@
 <div id="key-tools" class="hidden">
 <div class="key-form">
 <label>Public-key fingerprint<input id="key-fingerprint" readonly placeholder="Calculated from public key PEM"></label>
-<label>Algorithm<select id="key-algorithm"><option value="Ed25519">Ed25519</option><option value="ECDSA-P256">ECDSA P-256</option></select></label>
+<label>Algorithm<input id="key-algorithm" value="Ed25519" readonly></label>
 <label class="key-pem-label">Public key PEM<textarea id="key-pem" rows="5" spellcheck="false" placeholder="-----BEGIN PUBLIC KEY-----&#10;Paste the public key only"></textarea></label>
 <div class="key-actions"><button class="btn primary" id="register-key">Register public key</button><button class="btn ghost" id="clear-key-form">Clear key form</button></div>
 <label>Revocation reason<textarea id="key-revoke-reason" rows="2" maxlength="1000" placeholder="Explain why this key must no longer be trusted"></textarea></label>
