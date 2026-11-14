@@ -1,4 +1,5 @@
 import { verifyEd25519Manifest } from "./verification.ts";
+import { apiTokenAllows, hashApiToken, type ApiTokenRecord } from "../_shared/api_tokens.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,18 +79,43 @@ Deno.serve(async (request: Request) => {
   const serviceHeaders = { apikey: secretKey, Authorization: "Bearer " + secretKey };
 
   try {
+    let actorId: string;
+    let lookupHeaders: Record<string, string> = headers;
+    let apiTokenId: string | null = null;
     const userResponse = await fetch(supabaseUrl + "/auth/v1/user", { headers });
-    if (!userResponse.ok) return respond({ error: "Authenticated user session is invalid" }, 401);
-    const user = await userResponse.json();
-    if (!user?.id) return respond({ error: "Authenticated user identity is unavailable" }, 401);
+    if (userResponse.ok) {
+      const user = await userResponse.json();
+      if (!user?.id) return respond({ error: "Authenticated user identity is unavailable" }, 401);
+      actorId = user.id;
+    } else {
+      const bearerToken = authorization.replace(/^Bearer\\s+/i, "");
+      if (!bearerToken.startsWith("ft_live_")) return respond({ error: "Authentication required" }, 401);
+      const tokenHash = await hashApiToken(bearerToken);
+      const tokenQuery = new URLSearchParams({
+        select: "id,organization_id,created_by,scopes,project_ids,expires_at,revoked_at",
+        token_hash: "eq." + tokenHash,
+        limit: "2"
+      });
+      const tokenResponse = await fetch(supabaseUrl + "/rest/v1/api_tokens?" + tokenQuery.toString(), { headers: serviceHeaders });
+      if (!tokenResponse.ok) return respond({ error: "API token validation is unavailable" }, 503);
+      const tokenRows = await tokenResponse.json();
+      if (!Array.isArray(tokenRows) || tokenRows.length !== 1) return respond({ error: "API token is invalid" }, 401);
+      const apiToken = tokenRows[0] as ApiTokenRecord;
+      if (!apiTokenAllows(apiToken, bearerToken, orgId, projectId, "releases:write")) {
+        return respond({ error: "API token is expired, revoked or outside its organization, project or scope" }, 403);
+      }
+      actorId = apiToken.created_by;
+      apiTokenId = apiToken.id;
+      lookupHeaders = serviceHeaders;
+    }
 
     const membershipQuery = new URLSearchParams({
       select: "role",
       organization_id: "eq." + orgId,
-      user_id: "eq." + user.id,
+      user_id: "eq." + actorId,
       limit: "1"
     });
-    const membershipResponse = await fetch(supabaseUrl + "/rest/v1/organization_memberships?" + membershipQuery.toString(), { headers });
+    const membershipResponse = await fetch(supabaseUrl + "/rest/v1/organization_memberships?" + membershipQuery.toString(), { headers: lookupHeaders });
     if (!membershipResponse.ok) return respond({ error: "Organization membership validation failed" }, 502);
     const memberships = await membershipResponse.json();
     if (!Array.isArray(memberships) || memberships.length !== 1
@@ -98,7 +124,7 @@ Deno.serve(async (request: Request) => {
     }
 
     const projectQuery = new URLSearchParams({ select: "id", id: "eq." + projectId, organization_id: "eq." + orgId, limit: "1" });
-    const projectResponse = await fetch(supabaseUrl + "/rest/v1/projects?" + projectQuery.toString(), { headers });
+    const projectResponse = await fetch(supabaseUrl + "/rest/v1/projects?" + projectQuery.toString(), { headers: lookupHeaders });
     if (!projectResponse.ok) return respond({ error: "Project membership validation failed" }, 502);
     const projects = await projectResponse.json();
     if (!Array.isArray(projects) || projects.length !== 1) return respond({ error: "Project does not belong to this organization" }, 404);
@@ -110,7 +136,7 @@ Deno.serve(async (request: Request) => {
       key_fingerprint: "eq." + signature.key_id.toLowerCase(),
       limit: "2"
     });
-    const keyResponse = await fetch(supabaseUrl + "/rest/v1/signing_keys?" + keyQuery.toString(), { headers });
+    const keyResponse = await fetch(supabaseUrl + "/rest/v1/signing_keys?" + keyQuery.toString(), { headers: lookupHeaders });
     if (!keyResponse.ok) return respond({ error: "Signing-key registry lookup failed" }, 502);
     const keys = await keyResponse.json();
     if (!Array.isArray(keys) || keys.length !== 1) return respond({ error: "The signing key is not registered in this project" }, 422);
@@ -143,7 +169,7 @@ Deno.serve(async (request: Request) => {
         target_artifact_name: artifactName.trim(),
         target_artifact_sha256: artifactSha.toLowerCase(),
         target_manifest: manifest,
-        target_actor: user.id,
+        target_actor: actorId,
         target_key_fingerprint: signature.key_id.toLowerCase(),
         target_manifest_sha256: manifestDigest,
         target_signature_sha256: signatureDigest
@@ -154,12 +180,22 @@ Deno.serve(async (request: Request) => {
       const message = registrationBody?.message || registrationBody?.details || "Trusted release registration failed";
       return respond({ error: message }, registrationResponse.status >= 400 && registrationResponse.status < 500 ? registrationResponse.status : 502);
     }
+    if (apiTokenId) {
+      try {
+        await fetch(supabaseUrl + "/rest/v1/api_tokens?id=eq." + encodeURIComponent(apiTokenId) + "&revoked_at=is.null", {
+          method: "PATCH",
+          headers: { ...serviceHeaders, "Content-Type": "application/json", "Prefer": "return=minimal" },
+          body: JSON.stringify({ last_used_at: new Date().toISOString() })
+        });
+      } catch { /* Usage telemetry must not invalidate a successfully registered release. */ }
+    }
     return respond({
       release_id: registrationBody?.release_id,
       signature_verified: true,
       attestation_created: registrationBody?.attestation_created === true,
       key_status: "active",
-      verifier_version: "register-release/v2"
+      verifier_version: "register-release/v2",
+      authentication_method: apiTokenId ? "api_token" : "user_session"
     }, 201);
   } catch {
     return respond({ error: "Release registration could not be completed" }, 503);
