@@ -1,3 +1,4 @@
+import { hashApiToken } from "../_shared/api_tokens.ts";
 import { affectedRange, deduplicateComponents, normalizeCycloneDx, normalizeSpdx, purlHasVersion, severityOf } from "./sbom.ts";
 import { hashApiToken } from "../_shared/api_tokens.ts";
 const corsHeaders = {
