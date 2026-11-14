@@ -1,4 +1,4 @@
-import { apiTokenAllows, hashApiToken, type ApiTokenRecord } from "../_shared/api_tokens.ts";
+import { apiTokenAllows, hashApiToken, type ApiTokenRecord } from "./api_tokens.ts";
 import { verifyEd25519Manifest } from "./verification.ts";
 
 const corsHeaders={
