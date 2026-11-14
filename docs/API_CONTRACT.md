@@ -124,3 +124,40 @@ Webhook requests include a timestamp and HMAC signature over the raw request bod
 ## Compatibility and versioning
 
 The currently deployed invitation RPCs are POST /rest/v1/rpc/create_organization_invitation, POST /rest/v1/rpc/accept_organization_invitation and POST /rest/v1/rpc/revoke_organization_invitation. Creation and revocation require an owner/admin role. Acceptance requires a valid authenticated session whose email matches the invitation; tokens are single-use, hashed at rest, expire and are audited. The proposed unified API is versioned by path. Additive optional fields are backward-compatible. Breaking changes require a new major path and a published migration window. The currently deployed Supabase endpoints are not yet normalized behind /api/v1, and idempotency keys/correlation IDs remain to be implemented across the unified API.
+
+## Scoped CI/CD API gateway (deployed)
+
+The Edge Function `api-gateway` accepts FirmwareTrust API tokens in the Authorization header. These are not Supabase JWTs; the gateway validates them against the hashed token registry and enforces organization, scope, project restriction, expiry and revocation on every request.
+
+### Read releases
+
+```http
+GET /functions/v1/api-gateway/releases?project_id=<project-uuid>
+Authorization: Bearer ft_live_<secret>
+```
+
+Requires `releases:read`. An organization-wide token may omit project_id; a project-restricted token must supply an allowed project. The response contains release metadata only, not private manifests or signing material.
+
+### Register a signed release
+
+```http
+POST /functions/v1/api-gateway/releases
+Authorization: Bearer ft_live_<secret>
+Content-Type: application/json
+
+{
+  "project_id": "<project-uuid>",
+  "version": "1.2.3",
+  "artifact_name": "controller.bin",
+  "artifact_sha256": "<64-character-lowercase-hex>",
+  "manifest": { "...": "registry-scoped Ed25519-signed manifest" }
+}
+```
+
+Requires `releases:write`. The gateway checks the token's organization/project scope, verifies that its creator remains an authorized organization member, checks the registered key is active, verifies the Ed25519 signature, and calls the service-role-only atomic release-plus-attestation RPC. It never returns or accepts a service-role key from the client.
+
+### Token lifecycle
+
+Owners/admins create tokens through `POST /rest/v1/rpc/create_api_token` with name, scopes, project IDs and expiry. The raw `ft_live_` secret is returned once; only its SHA-256 hash is stored. Owners/admins can list non-secret metadata through the `api_token_registry` view and revoke tokens through `POST /rest/v1/rpc/revoke_api_token`. The `verify_api_token` RPC is used by the gateway to check scope/project/expiry/revocation and update last-used time.
+
+The gateway currently implements only `releases:read` and `releases:write`. Other registered scope values are reserved for future endpoints. Rate limiting, per-token usage dashboards and broader SBOM/audit endpoints remain open.
