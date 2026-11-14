@@ -1,15 +1,14 @@
 """Static contract checks for the browser-based Enterprise Console."""
 
+import html.parser
+import pathlib
 import re
-from collections import Counter
-from html.parser import HTMLParser
-from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
-class _IdCollector(HTMLParser):
+class _IdCollector(html.parser.HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.ids: list[str] = []
@@ -23,9 +22,7 @@ def test_enterprise_console_has_unique_dom_ids() -> None:
     parser.feed((ROOT / "enterprise.html").read_text(encoding="utf-8"))
 
     duplicates = sorted(
-        element_id
-        for element_id, count in Counter(parser.ids).items()
-        if count > 1
+        {element_id for element_id in parser.ids if parser.ids.count(element_id) > 1}
     )
 
     assert not duplicates, f"Duplicate Enterprise Console DOM IDs: {duplicates}"
