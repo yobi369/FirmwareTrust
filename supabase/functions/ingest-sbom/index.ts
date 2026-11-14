@@ -59,6 +59,14 @@ function affectedRange(vuln: any): { range: string | null; fixed: string | null 
   }
   return { range: parts.join("; ").slice(0,4000) || null, fixed };
 }
+async function persistScanStatus(supabaseUrl: string, headers: Record<string,string>, sbomId: string, status: string, scanned: number, findings: number, warning: string | null = null): Promise<boolean> {
+  const response = await fetch(supabaseUrl + "/rest/v1/sbom_documents?id=eq." + sbomId, {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ scan_status: status, scan_source: "OSV.dev", scanned_at: new Date().toISOString(), scanned_component_count: scanned, finding_count: findings, scan_warning: warning })
+  });
+  return response.ok;
+}
 async function mapLimit<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
   let next = 0;
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -79,7 +87,9 @@ Deno.serve(async (request: Request) => {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (typeof body.organization_id !== "string" || !uuid.test(body.organization_id) || typeof body.project_id !== "string" || !uuid.test(body.project_id)) return respond({ error: "Valid organization_id and project_id are required" }, 400);
   if (body.release_id != null && (typeof body.release_id !== "string" || !uuid.test(body.release_id))) return respond({ error: "release_id must be a valid UUID" }, 400);
-  if (typeof body.document_text !== "string" || body.document_text.length < 2 || body.document_text.length > 5 * 1024 * 1024) return respond({ error: "SBOM document text is missing or exceeds 5 MB" }, 400);
+  if (typeof body.document_text !== "string" || body.document_text.length < 2) return respond({ error: "SBOM document text is missing" }, 400);
+  const documentBytes = new TextEncoder().encode(body.document_text);
+  if (documentBytes.byteLength > 5 * 1024 * 1024) return respond({ error: "SBOM document text exceeds 5 MB" }, 400);
   let document: any;
   try { document = JSON.parse(body.document_text); } catch { return respond({ error: "SBOM file is not valid JSON" }, 400); }
   let normalized: { format: string; specVersion: string; components: any[] };
@@ -105,7 +115,7 @@ Deno.serve(async (request: Request) => {
     if (!userResponse.ok) return respond({ error: "Authenticated user session is invalid" }, 401);
     const user = await userResponse.json();
     if (!user?.id) return respond({ error: "Authenticated user identity is unavailable" }, 401);
-    const digestBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body.document_text)));
+    const digestBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", documentBytes));
     const documentHash = Array.from(digestBytes, (byte) => byte.toString(16).padStart(2,"0")).join("");
     const rpcResponse = await fetch(supabaseUrl + "/rest/v1/rpc/ingest_sbom", {
       method: "POST", headers: { ...headers, "Content-Type": "application/json" },
@@ -118,18 +128,18 @@ Deno.serve(async (request: Request) => {
 
     const componentQuery = new URLSearchParams({ select: "id,component_name,version,purl", sbom_id: "eq." + sbomId, limit: "20000" });
     const componentResponse = await fetch(supabaseUrl + "/rest/v1/sbom_components?" + componentQuery.toString(), { headers });
-    if (!componentResponse.ok) return respond({ sbom_id: sbomId, component_count: components.length, scan_status: "not_started", warning: "SBOM saved, but component inventory could not be loaded for scanning" }, 201);
+    if (!componentResponse.ok) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "not_started", 0, 0, "Component inventory could not be loaded for scanning"); return respond({ sbom_id: sbomId, component_count: components.length, scan_status: "not_started", scan_status_persisted: saved }, 201); }
     const savedComponents = await componentResponse.json();
     const componentMap = new Map<string, string>();
     for (const item of savedComponents) componentMap.set(String(item.purl || "") + "|" + item.component_name + "|" + String(item.version || ""), item.id);
     const candidates = components.filter((component) => typeof component.purl === "string" && component.purl.startsWith("pkg:") && (purlHasVersion(component.purl) || Boolean(component.version)));
-    if (!candidates.length) return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: 0, finding_count: 0, scan_status: "no_versioned_purls", scan_source: "OSV.dev" }, 201);
+    if (!candidates.length) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "no_versioned_purls", 0, 0); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: 0, finding_count: 0, scan_status: "no_versioned_purls", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
     const boundedCandidates = candidates.slice(0,1000);
     const queries = boundedCandidates.map((component) => purlHasVersion(component.purl) ? { package: { purl: component.purl } } : { package: { purl: component.purl }, version: component.version });
     const osvResponse = await fetch("https://api.osv.dev/v1/querybatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ queries }) });
-    if (!osvResponse.ok) return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "unavailable", scan_source: "OSV.dev" }, 201);
+    if (!osvResponse.ok) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "unavailable", boundedCandidates.length, 0, "OSV.dev querybatch request failed"); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "unavailable", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
     const batch = await osvResponse.json();
-    if (!Array.isArray(batch.results) || batch.results.length !== boundedCandidates.length) return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "partial", scan_source: "OSV.dev", warning: "OSV returned an incomplete batch response" }, 201);
+    if (!Array.isArray(batch.results) || batch.results.length !== boundedCandidates.length) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "partial", boundedCandidates.length, 0, "OSV returned an incomplete batch response"); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "partial", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
     const querybatchHasMore = batch.results.some((result: any) => Boolean(result.next_page_token));
     const vulnerabilityComponents = new Map<string, Set<string>>();
     for (let index=0; index<boundedCandidates.length; index++) {
@@ -164,6 +174,8 @@ Deno.serve(async (request: Request) => {
       }
     }
     const partial = candidates.length > boundedCandidates.length || detailFailures > 0 || querybatchHasMore || advisoriesTruncated;
-    return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: inserted, scan_status: partial ? "partial" : "complete", scan_source: "OSV.dev", advisory_details_failed: detailFailures, advisories_truncated: advisoriesTruncated, pagination_pending: querybatchHasMore }, 201);
+    const finalStatus = partial ? "partial" : "complete";
+    const saved = await persistScanStatus(supabaseUrl, headers, sbomId, finalStatus, boundedCandidates.length, inserted, partial ? "Some package or advisory results require a follow-up scan" : null);
+    return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: inserted, scan_status: finalStatus, scan_source: "OSV.dev", advisory_details_failed: detailFailures, advisories_truncated: advisoriesTruncated, pagination_pending: querybatchHasMore, scan_status_persisted: saved }, 201);
   } catch { return respond({ error: "SBOM ingestion or vulnerability enrichment could not be completed" }, 503); }
 });
