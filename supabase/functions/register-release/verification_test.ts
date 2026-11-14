@@ -9,7 +9,7 @@ function pemFromDer(der: ArrayBuffer): string {
 }
 
 async function signedFixture() {
-  const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]) as CryptoKeyPair;
   const publicDer = await crypto.subtle.exportKey("spki", pair.publicKey);
   const manifest: Record<string, unknown> = {
     artifact: { filename: "controller.bin", digest_algorithm: "sha256", digest: "a".repeat(64), size_bytes: 1024 },
