@@ -53,7 +53,7 @@ Use standard HTTP status codes: 400 malformed input, 401 unauthenticated, 403 un
 | POST | `/releases/{releaseId}/evaluate` | Evaluate active release policy | `policies:evaluate` |
 | POST | `/releases/{releaseId}/publish` | Publish an approved immutable release | `releases:publish` |
 
-Release creation requires an idempotency key and includes artifact digest, size, manifest, source revision and optional SBOM reference. The service verifies the manifest signature and digest from supplied evidence; it must not trust client-supplied `verified: true` flags.
+Release creation requires an idempotency key and includes artifact digest, size, manifest, source revision and optional SBOM reference. The deployed Supabase Edge Function `POST /functions/v1/register-release` requires a valid user JWT, checks organization/project membership through RLS, verifies the Ed25519 manifest against an active registered public key, binds the signed registry scope to the selected organization/project, and inserts a draft release. A database trigger appends the release registration audit event in the same transaction. The service must not trust client-supplied `verified: true` flags. The current UI also permits explicitly marked unsigned metadata-only drafts; these are not cryptographically verified.
 
 ## Key lifecycle
 
