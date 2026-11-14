@@ -4,7 +4,7 @@ FirmwareTrust registers public verification material only. Customer signing priv
 
 ## Supported lifecycle
 
-- **Register:** submit a PEM SubjectPublicKeyInfo public key. The browser computes a SHA-256 fingerprint over the decoded DER bytes. The database accepts only supported algorithms and creates the key in the active state.
+- **Register:** submit a PEM SubjectPublicKeyInfo public key. The browser imports the Ed25519 SubjectPublicKeyInfo PEM, exports the raw 32-byte public key, and computes the same 16-hex-character SHA-256 key ID used by the M0 release manifest. This keeps registry identity aligned with the workbench verifier. The database accepts only supported algorithms and creates the key in the active state.
 - **Rotate:** the authenticated security role selects an active key and supplies its successor public key. A single database transaction marks the predecessor rotated, inserts the successor with a `rotated_from` link, and appends an audit event. A failed insert or audit operation rolls the transaction back.
 - **Revoke:** the authenticated security role supplies a reason. The active key becomes revoked with a timestamp and an audit event. Revocation is irreversible through the client API.
 - **Historical evidence:** public key material and fingerprints are immutable. Old keys remain available for historical signature verification; current trust status must be checked separately.
