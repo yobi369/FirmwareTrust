@@ -123,7 +123,7 @@ Deno.serve(async (request: Request) => {
       return respond({ error: "The signing key is not currently active and trusted", key_status: key.status }, 422);
     }
 
-    let verification;
+    let verification: { valid: boolean; manifestSha256: string; signatureSha256: string };
     try {
       verification = await verifyEd25519Manifest(manifest, String(key.public_key_pem));
     } catch {
