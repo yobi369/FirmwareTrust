@@ -81,7 +81,7 @@ Deno.serve(async (request: Request) => {
     const candidates = components.filter((component) => typeof component.purl === "string" && component.purl.startsWith("pkg:") && (purlHasVersion(component.purl) || Boolean(component.version)));
     if (!candidates.length) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "no_versioned_purls", 0, 0); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: 0, finding_count: 0, scan_status: "no_versioned_purls", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
     const boundedCandidates = candidates.slice(0,1000);
-    const queries = boundedCandidates.map((component) => purlHasVersion(component.purl) ? { package: { purl: component.purl } } : { package: { purl: component.purl }, version: component.version });
+    const queries = boundedCandidates.map((component) => { const purl = String(component.purl); return purlHasVersion(purl) ? { package: { purl } } : { package: { purl }, version: String(component.version) }; });
     let osvResponse: Response;
     try { osvResponse = await fetch("https://api.osv.dev/v1/querybatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ queries }) }); }
     catch { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "unavailable", boundedCandidates.length, 0, "OSV.dev querybatch network request failed"); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "unavailable", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
