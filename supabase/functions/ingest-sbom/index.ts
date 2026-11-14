@@ -18,7 +18,7 @@ function normalizeCycloneDx(doc: any) {
       if (Array.isArray(item.components)) walk(item.components);
     }
   };
-  walk(doc.components || []);
+  walk([...(doc.metadata?.component ? [doc.metadata.component] : []), ...(doc.components || [])]);
   return { format: "cyclonedx", specVersion: String(doc.specVersion || ""), components: rows };
 }
 function normalizeSpdx(doc: any) {
@@ -78,12 +78,13 @@ Deno.serve(async (request: Request) => {
   catch { return respond({ error: "Expected valid JSON request" }, 400); }
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (typeof body.organization_id !== "string" || !uuid.test(body.organization_id) || typeof body.project_id !== "string" || !uuid.test(body.project_id)) return respond({ error: "Valid organization_id and project_id are required" }, 400);
+  if (body.release_id != null && (typeof body.release_id !== "string" || !uuid.test(body.release_id))) return respond({ error: "release_id must be a valid UUID" }, 400);
   if (typeof body.document_text !== "string" || body.document_text.length < 2 || body.document_text.length > 5 * 1024 * 1024) return respond({ error: "SBOM document text is missing or exceeds 5 MB" }, 400);
   let document: any;
   try { document = JSON.parse(body.document_text); } catch { return respond({ error: "SBOM file is not valid JSON" }, 400); }
   let normalized: { format: string; specVersion: string; components: any[] };
   if (document.bomFormat === "CycloneDX" && Array.isArray(document.components)) normalized = normalizeCycloneDx(document);
-  else if (typeof document.spdxVersion === "string" && Array.isArray(document.packages)) normalized = normalizeSpdx(document);
+  else if (typeof document.spdxVersion === "string" && document.spdxVersion.startsWith("SPDX-") && Array.isArray(document.packages)) normalized = normalizeSpdx(document);
   else return respond({ error: "Only CycloneDX JSON and SPDX JSON SBOMs are supported" }, 422);
   const unique = new Map<string, any>();
   for (const component of normalized.components) {
@@ -104,7 +105,8 @@ Deno.serve(async (request: Request) => {
     if (!userResponse.ok) return respond({ error: "Authenticated user session is invalid" }, 401);
     const user = await userResponse.json();
     if (!user?.id) return respond({ error: "Authenticated user identity is unavailable" }, 401);
-    const documentHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body.document_text))).map((byte) => byte.toString(16).padStart(2,"0"))).join("");
+    const digestBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body.document_text)));
+    const documentHash = Array.from(digestBytes, (byte) => byte.toString(16).padStart(2,"0")).join("");
     const rpcResponse = await fetch(supabaseUrl + "/rest/v1/rpc/ingest_sbom", {
       method: "POST", headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify({ target_org: body.organization_id, target_project: body.project_id, target_release: body.release_id || null, target_format: normalized.format, target_spec_version: normalized.specVersion, target_document_sha256: documentHash, target_document: document, target_components: components })
