@@ -5,7 +5,8 @@ insert into auth.users(id,aud,role,email,created_at,updated_at)
 values
   ('f1000000-0000-4000-8000-000000000001','authenticated','authenticated','ft-test-owner@example.invalid',now(),now()),
   ('f1000000-0000-4000-8000-000000000002','authenticated','authenticated','ft-test-outsider@example.invalid',now(),now()),
-  ('f1000000-0000-4000-8000-000000000003','authenticated','authenticated','ft-test-developer@example.invalid',now(),now())
+  ('f1000000-0000-4000-8000-000000000003','authenticated','authenticated','ft-test-developer@example.invalid',now(),now()),
+  ('f1000000-0000-4000-8000-000000000004','authenticated','authenticated','ft-test-reviewer@example.invalid',now(),now())
 on conflict (id) do nothing;
 
 set local role authenticated;
@@ -15,6 +16,7 @@ declare
   owner_id uuid := 'f1000000-0000-4000-8000-000000000001';
   outsider_id uuid := 'f1000000-0000-4000-8000-000000000002';
   developer_id uuid := 'f1000000-0000-4000-8000-000000000003';
+  reviewer_id uuid := 'f1000000-0000-4000-8000-000000000004';
   raw_a bytea := decode('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f','hex');
   raw_b bytea := decode('202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f','hex');
   raw_c bytea := decode('404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f','hex');
@@ -79,6 +81,40 @@ begin
   if (public.evaluate_release_policy(release_a)->>'decision') <> 'block' then
     raise exception 'FAIL: policy evaluator did not block a release missing signature, completed scan and independent approval evidence';
   end if;
+
+  perform public.request_release_approval(release_a);
+  if not exists(select 1 from public.releases where id=release_a and status='pending_approval' and policy_id is not null) then
+    raise exception 'FAIL: release review request did not pin a policy version';
+  end if;
+
+  insert into public.organization_memberships(organization_id,user_id,role)
+  values(org_a,reviewer_id,'security_analyst');
+  perform set_config('request.jwt.claim.sub',reviewer_id::text,true);
+  perform public.submit_release_approval(release_a,'approved','Integration approval; policy evidence is intentionally incomplete');
+  if not exists(select 1 from public.releases where id=release_a and status='pending_approval') then
+    raise exception 'FAIL: incomplete policy evidence incorrectly advanced release to approved';
+  end if;
+  if not exists(select 1 from public.release_approvals where release_id=release_a and reviewer_id=reviewer_id and decision='approved') then
+    raise exception 'FAIL: reviewer decision was not persisted';
+  end if;
+  if not exists(select 1 from public.audit_events where organization_id=org_a and action='release.approval.approved' and resource_id=release_a::text) then
+    raise exception 'FAIL: reviewer decision was not appended to the audit chain';
+  end if;
+
+  begin
+    perform public.submit_release_approval(release_a,'rejected','Duplicate reviewer decision must fail');
+    raise exception 'FAIL: same reviewer submitted a second decision for the same policy version';
+  exception when unique_violation then null;
+  end;
+
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  begin
+    update public.releases set status='approved' where id=release_a;
+    raise exception 'FAIL: direct release status update bypassed policy evaluation';
+  exception when raise_exception then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like '%Release cannot be approved%' then raise; end if;
+  end;
 
   insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
   values(org_a,fp_a,'Ed25519',pem_a,'active',owner_id)
