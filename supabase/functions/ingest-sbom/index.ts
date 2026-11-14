@@ -1,4 +1,4 @@
-import { affectedRange, deduplicateComponents, normalizeCycloneDx, normalizeSpdx, purlHasVersion, severityOf } from "../_shared/sbom.ts";
+import { affectedRange, deduplicateComponents, normalizeCycloneDx, normalizeSpdx, purlHasVersion, severityOf } from "./sbom.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "apikey, authorization, content-type, x-client-info",
