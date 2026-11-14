@@ -9,7 +9,7 @@ The authenticated `POST /functions/v1/ingest-sbom` Edge Function accepts Cyclone
 - CycloneDX root metadata component and nested components are included.
 - SPDX package entries are normalized; package URLs are read from PURL external references.
 - Components are deduplicated by package URL, name and version.
-- The original parsed document is retained as JSONB, alongside a SHA-256 digest of the uploaded JSON text.
+- The original parsed document is retained as JSONB, alongside a SHA-256 digest of the uploaded JSON text. Scan status, source, time, component count, finding count and any partial-scan warning are persisted on the SBOM record.
 - The database RPC inserts the document, component inventory and `sbom.ingested` audit event atomically.
 
 ## Vulnerability enrichment
