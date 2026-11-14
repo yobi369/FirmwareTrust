@@ -10,13 +10,8 @@ alter table public.api_tokens
   );
 
 alter table public.api_tokens
-  add constraint api_tokens_project_ids_unique
-  check (
-    cardinality(project_ids) = (
-      select count(distinct project_id)::integer
-      from unnest(project_ids) as item(project_id)
-    )
-  );
+  add constraint api_tokens_project_ids_bounded
+  check (cardinality(project_ids) <= 100);
 
 create index if not exists idx_api_tokens_project_ids on public.api_tokens using gin(project_ids);
 
