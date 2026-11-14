@@ -60,12 +60,14 @@ function affectedRange(vuln: any): { range: string | null; fixed: string | null 
   return { range: parts.join("; ").slice(0,4000) || null, fixed };
 }
 async function persistScanStatus(supabaseUrl: string, headers: Record<string,string>, sbomId: string, status: string, scanned: number, findings: number, warning: string | null = null): Promise<boolean> {
-  const response = await fetch(supabaseUrl + "/rest/v1/sbom_documents?id=eq." + sbomId, {
-    method: "PATCH",
-    headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify({ scan_status: status, scan_source: "OSV.dev", scanned_at: new Date().toISOString(), scanned_component_count: scanned, finding_count: findings, scan_warning: warning })
-  });
-  return response.ok;
+  try {
+    const response = await fetch(supabaseUrl + "/rest/v1/sbom_documents?id=eq." + sbomId, {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ scan_status: status, scan_source: "OSV.dev", scanned_at: new Date().toISOString(), scanned_component_count: scanned, finding_count: findings, scan_warning: warning })
+    });
+    return response.ok;
+  } catch { return false; }
 }
 async function mapLimit<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
   let next = 0;
@@ -136,9 +138,11 @@ Deno.serve(async (request: Request) => {
     if (!candidates.length) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "no_versioned_purls", 0, 0); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: 0, finding_count: 0, scan_status: "no_versioned_purls", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
     const boundedCandidates = candidates.slice(0,1000);
     const queries = boundedCandidates.map((component) => purlHasVersion(component.purl) ? { package: { purl: component.purl } } : { package: { purl: component.purl }, version: component.version });
-    const osvResponse = await fetch("https://api.osv.dev/v1/querybatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ queries }) });
+    let osvResponse: Response;
+    try { osvResponse = await fetch("https://api.osv.dev/v1/querybatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ queries }) }); }
+    catch { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "unavailable", boundedCandidates.length, 0, "OSV.dev querybatch network request failed"); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "unavailable", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
     if (!osvResponse.ok) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "unavailable", boundedCandidates.length, 0, "OSV.dev querybatch request failed"); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "unavailable", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
-    const batch = await osvResponse.json();
+    const batch = await osvResponse.json().catch(() => null);
     if (!Array.isArray(batch.results) || batch.results.length !== boundedCandidates.length) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "partial", boundedCandidates.length, 0, "OSV returned an incomplete batch response"); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "partial", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
     const querybatchHasMore = batch.results.some((result: any) => Boolean(result.next_page_token));
     const vulnerabilityComponents = new Map<string, Set<string>>();
@@ -158,7 +162,9 @@ Deno.serve(async (request: Request) => {
     const findings: any[] = [];
     let detailFailures = 0;
     await mapLimit(vulnerabilityIds,6,async (id) => {
-      const detailResponse = await fetch("https://api.osv.dev/v1/vulns/" + encodeURIComponent(id));
+      let detailResponse: Response;
+      try { detailResponse = await fetch("https://api.osv.dev/v1/vulns/" + encodeURIComponent(id)); }
+      catch { detailFailures++; return; }
       if (!detailResponse.ok) { detailFailures++; return; }
       const vuln = await detailResponse.json();
       const ranges = affectedRange(vuln);
@@ -168,7 +174,9 @@ Deno.serve(async (request: Request) => {
     if (findings.length) {
       const insertUrl = supabaseUrl + "/rest/v1/vulnerability_findings?on_conflict=sbom_id,advisory_id,source,component_id";
       for (let offset=0; offset<findings.length; offset+=500) {
-        const insertResponse = await fetch(insertUrl, { method: "POST", headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify(findings.slice(offset,offset+500)) });
+        let insertResponse: Response;
+        try { insertResponse = await fetch(insertUrl, { method: "POST", headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify(findings.slice(offset,offset+500)) }); }
+        catch { detailFailures++; break; }
         if (!insertResponse.ok) { detailFailures++; break; }
         inserted += Math.min(500,findings.length-offset);
       }
