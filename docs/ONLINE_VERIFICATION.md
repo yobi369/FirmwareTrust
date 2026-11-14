@@ -45,3 +45,11 @@ Possible statuses include `active`, `rotated`, `revoked`, `expired`, `not_yet_va
 - The online endpoint checks the exact organization/project/key tuple. It does not independently certify firmware safety or prove a device enforces the result.
 - Manifests without registry context remain compatible with offline verification, but cannot establish current registry status.
 - Production hardening still requires rate limiting/abuse controls, browser end-to-end testing, independent security review and operational monitoring.
+
+## Non-forgeable release verification attestation
+
+The authenticated `register-release` Edge Function verifies the Ed25519 signature and active registry-key status before calling the service-only `register_verified_release` RPC. That RPC creates the draft release and its `release_verification_attestations` row in one database transaction. The RPC is executable only by the Supabase service role; authenticated and anonymous users cannot insert or mutate attestation rows.
+
+Each attestation records the organization/project/release tuple, key fingerprint, Ed25519 algorithm, SHA-256 digest of the canonical signed payload, SHA-256 digest of the signature bytes, verifier version and server-side verification time. A database trigger checks the attestation scope, release artifact metadata and that the registered key was active at verification time. The attestation is immutable and appended to the organization audit chain.
+
+Release policy evaluation now treats `require_signed_manifest` as requiring this attestation, not merely a signature-shaped JSON object. Release identity, artifact digest and manifest are immutable after registration. Publication requires an approved release, a matching server-created attestation and a fresh passing policy evaluation; the database repeats those checks during the status transition.
