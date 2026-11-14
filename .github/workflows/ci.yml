@@ -29,7 +29,7 @@ jobs:
         run: pytest --cov=firmwaretrust --cov-report=term-missing
       - name: Validate browser application syntax
         if: matrix.python-version == '3.13'
-        run: node --check app.js
+        run: node --check app.js && node --check enterprise.js && node --check api/config.js
       - name: Lint
         if: matrix.python-version == '3.13'
         run: ruff check .
