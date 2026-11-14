@@ -1,9 +1,9 @@
 """Static contract checks for the browser-based Enterprise Console."""
 
+import re
 from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
-import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
