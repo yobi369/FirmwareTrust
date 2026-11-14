@@ -37,9 +37,9 @@ Deno.serve(async(req)=>{
   try{
     let body:Record<string,unknown>={};
     if(req.method==="POST"){
-      const length=Number(req.headers.get("content-length")||"0");
-      if(length>1_000_000)return respond({error:"Request body exceeds the 1 MB limit"},413);
-      body=await req.json();
+      const rawBody=await req.text();
+      if(new TextEncoder().encode(rawBody).length>1_000_000)return respond({error:"Request body exceeds the 1 MB limit"},413);
+      try{body=JSON.parse(rawBody);}catch{return respond({error:"Request body must be valid JSON"},400);}
       if(!body||typeof body!=="object"||Array.isArray(body))return respond({error:"JSON object body required"},400);
     }
     const projectId=String(req.method==="POST"?(body.project_id||""):(url.searchParams.get("project_id")||""));
@@ -54,7 +54,9 @@ Deno.serve(async(req)=>{
       const status=authResult.status===403?403:401;
       return respond({error:status===403?"API token scope or project access denied":"API token is invalid, expired or revoked"},status);
     }
-    const claims=authResult.value as ApiTokenRecord & {token_id:string};
+    const verified=authResult.value as {token_id:string;organization_id:string;created_by:string;scopes:string[];project_ids:string[];expires_at:string};
+    const claims:ApiTokenRecord={id:verified.token_id,organization_id:verified.organization_id,created_by:verified.created_by,
+      scopes:verified.scopes,project_ids:verified.project_ids,expires_at:verified.expires_at,revoked_at:null};
     if(!apiTokenAllows(claims,tokenMatch[1],claims.organization_id,projectId||"",requiredScope)){
       return respond({error:"API token scope or project access denied"},403);
     }
@@ -133,6 +135,6 @@ Deno.serve(async(req)=>{
     });
     const registered=await jsonResponse(registration);
     if(!registered.ok)return respond({error:registered.value?.message||"Trusted release registration failed"},registered.status>=400&&registered.status<500?registered.status:502);
-    return respond({release_id:registered.value?.release_id,signature_verified:true,attestation_created:true,token_id:claims.token_id},201);
+    return respond({release_id:registered.value?.release_id,signature_verified:true,attestation_created:true,token_id:verified.token_id},201);
   }catch{return respond({error:"API gateway request could not be completed"},400);}
 });
