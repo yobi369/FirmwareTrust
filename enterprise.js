@@ -34,11 +34,66 @@
   async function selectOrganization(id){state.organization=state.organizations.find(org=>org.id===id)||null;if(!state.organization)return;$("project-tools").classList.remove("hidden");$("project-heading").textContent=state.organization.name+" · Projects";$("project-subtitle").textContent="Create and manage projects inside this organization.";$("release-tools").classList.add("hidden");await loadProjects();}
   async function loadProjects(){const list=$("project-list");list.innerHTML="<p class='muted'>Loading projects…</p>";try{state.projects=await request("/rest/v1/projects?select=id,name,slug,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&order=created_at.desc")||[];if(!state.projects.length){list.innerHTML="<p class='muted'>No projects yet. Create the first project.</p>";return;}list.innerHTML=state.projects.map(project=>"<div class='record-item "+(state.project?.id===project.id?"selected":"")+"'><div><strong>"+esc(project.name)+"</strong><small>"+esc(project.slug)+"</small></div><button class='btn ghost' data-project='"+esc(project.id)+"'>Releases</button></div>").join("");list.querySelectorAll("[data-project]").forEach(button=>button.addEventListener("click",()=>selectProject(button.dataset.project)));}catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}}
   async function createProject(){try{const name=$("project-name").value.trim(),slug=slugify($("project-slug").value||name);if(!state.organization||name.length<2||slug.length<2)throw new Error("Choose an organization and enter a valid project name.");await request("/rest/v1/projects",{method:"POST",headers:{"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({organization_id:state.organization.id,name,slug,created_by:state.session.user.id})});$("project-name").value="";$("project-slug").value="";await loadProjects();}catch(e){message("auth-message",e.message,true)}}
-  async function selectProject(id){state.project=state.projects.find(project=>project.id===id)||null;if(!state.project)return;$("release-tools").classList.remove("hidden");$("release-subtitle").textContent="Draft releases for "+state.project.name+". Registry stores metadata and digests, not firmware binaries.";await loadReleases();await loadProjects();}
+  async function selectProject(id){state.project=state.projects.find(project=>project.id===id)||null;if(!state.project)return;$("release-tools").classList.remove("hidden");$("key-tools").classList.remove("hidden");$("release-subtitle").textContent="Draft releases for "+state.project.name+". Registry stores metadata and digests, not firmware binaries.";await Promise.all([loadReleases(),loadKeys()]);await loadProjects();}
   async function loadReleases(){const list=$("release-list");list.innerHTML="<p class='muted'>Loading release history…</p>";try{const rows=await request("/rest/v1/releases?select=id,version,artifact_name,artifact_sha256,status,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&project_id=eq."+encodeURIComponent(state.project.id)+"&order=created_at.desc")||[];if(!rows.length){list.innerHTML="<p class='muted'>No releases registered for this project.</p>";return;}list.innerHTML=rows.map(release=>"<div class='record-item'><div><strong>"+esc(release.version)+" · "+esc(release.artifact_name)+"</strong><small>"+esc(release.status)+" · SHA-256 "+esc(release.artifact_sha256)+"</small></div><span class='status-text'>"+new Date(release.created_at).toLocaleDateString()+"</span></div>").join("");}catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}}
   async function createRelease(){try{const version=$("release-version").value.trim(),artifact=$("release-artifact").value.trim(),sha=$("release-sha").value.trim().toLowerCase();if(!state.project||!version||!artifact||!/^[a-f0-9]{64}$/.test(sha))throw new Error("Enter a version, artifact filename and 64-character SHA-256 digest.");await request("/rest/v1/releases",{method:"POST",headers:{"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({organization_id:state.organization.id,project_id:state.project.id,version,artifact_name:artifact,artifact_sha256:sha,created_by:state.session.user.id,manifest:{source:"enterprise-console"}})});$("release-version").value="";$("release-artifact").value="";$("release-sha").value="";await loadReleases();}catch(e){message("auth-message",e.message,true)}}
+  function publicKeyDer(pem){
+    const match=pem.match(/-----BEGIN PUBLIC KEY-----([\\s\\S]+?)-----END PUBLIC KEY-----/);
+    if(!match)throw new Error("Paste a PEM-encoded PUBLIC KEY, not a private key.");
+    const raw=atob(match[1].replace(/\\s/g,""));
+    if(raw.length<32||raw.length>12000)throw new Error("Public key PEM is malformed or too large.");
+    return Uint8Array.from(raw,c=>c.charCodeAt(0));
+  }
+  async function fingerprintForPem(pem){
+    const der=publicKeyDer(pem);
+    const digest=await crypto.subtle.digest("SHA-256",der);
+    return "SHA256:"+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
+  }
+  async function updateKeyFingerprint(){
+    try{$("key-fingerprint").value=await fingerprintForPem($("key-pem").value.trim());}
+    catch{$("key-fingerprint").value="";}
+  }
+  async function loadKeys(){
+    const list=$("key-list");list.innerHTML="<p class='muted'>Loading signing keys…</p>";
+    try{
+      const keys=await request("/rest/v1/signing_keys?select=id,key_fingerprint,algorithm,status,valid_from,valid_until,revoked_reason,project_id&organization_id=eq."+encodeURIComponent(state.organization.id)+"&project_id=eq."+encodeURIComponent(state.project.id)+"&order=created_at.desc")||[];
+      if(!keys.length){list.innerHTML="<p class='muted'>No registered signing keys for this project.</p>";return;}
+      list.innerHTML=keys.map(key=>"<div class='record-item'><div><strong>"+esc(key.algorithm)+" · "+esc(key.status)+"</strong><small>"+esc(key.key_fingerprint)+"</small><small>Valid from "+new Date(key.valid_from).toLocaleString()+(key.valid_until?" · until "+new Date(key.valid_until).toLocaleString():"")+(key.revoked_reason?" · "+esc(key.revoked_reason):"")+"</small></div>"+(key.status==="active"?"<div class='key-row-actions'><button class='btn ghost' data-rotate-key='"+esc(key.id)+"'>Rotate</button><button class='btn danger' data-revoke-key='"+esc(key.id)+"'>Revoke</button></div>":"")+"</div>").join("");
+      list.querySelectorAll("[data-rotate-key]").forEach(button=>button.addEventListener("click",()=>rotateKey(button.dataset.rotateKey)));
+      list.querySelectorAll("[data-revoke-key]").forEach(button=>button.addEventListener("click",()=>revokeKey(button.dataset.revokeKey)));
+    }catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}
+  }
+  async function registerKey(){
+    try{
+      const pem=$("key-pem").value.trim(),algorithm=$("key-algorithm").value;
+      if(!state.project)throw new Error("Select a project first.");
+      const fingerprint=await fingerprintForPem(pem);$("key-fingerprint").value=fingerprint;
+      await request("/rest/v1/signing_keys",{method:"POST",headers:{"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({organization_id:state.organization.id,project_id:state.project.id,key_fingerprint:fingerprint,algorithm,public_key_pem:pem,status:"active",created_by:state.session.user.id})});
+      $("key-pem").value="";$("key-fingerprint").value="";message("auth-message","Public signing key registered. Its private key was not uploaded.");await loadKeys();
+    }catch(e){message("auth-message",e.message,true)}
+  }
+  async function rotateKey(oldKeyId){
+    try{
+      const pem=$("key-pem").value.trim(),algorithm=$("key-algorithm").value;
+      if(!pem)throw new Error("Paste the successor public key PEM before selecting Rotate.");
+      const fingerprint=await fingerprintForPem(pem);$("key-fingerprint").value=fingerprint;
+      await request("/rest/v1/rpc/rotate_signing_key",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target_org:state.organization.id,old_key_id:oldKeyId,new_fingerprint:fingerprint,new_public_key_pem:pem,new_algorithm:algorithm})});
+      $("key-pem").value="";$("key-fingerprint").value="";message("auth-message","Key rotation completed. The predecessor is marked rotated and the successor is active.");await loadKeys();
+    }catch(e){message("auth-message",e.message,true)}
+  }
+  async function revokeKey(keyId){
+    try{
+      const reason=$("key-revoke-reason").value.trim();
+      if(reason.length<3)throw new Error("Enter a meaningful revocation reason first.");
+      if(!window.confirm("Revoke this signing key? This action is irreversible."))return;
+      await request("/rest/v1/rpc/revoke_signing_key",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target_org:state.organization.id,target_key_id:keyId,reason})});
+      $("key-revoke-reason").value="";message("auth-message","Signing key revoked. The revocation was recorded in the audit history.");await loadKeys();
+    }catch(e){message("auth-message",e.message,true)}
+  }
+  function clearKeyForm(){$("key-pem").value="";$("key-fingerprint").value="";}
   async function signOut(){try{if(token())await fetch(state.config.url+"/auth/v1/logout",{method:"POST",headers:headers()})}catch{}saveSession(null);state.organization=null;state.project=null;$("workspace").classList.add("hidden");$("auth-card").classList.remove("hidden");message("auth-message","Signed out.");}
   async function init(){try{const response=await fetch("/api/config",{cache:"no-store"});if(!response.ok)throw new Error("Enterprise backend configuration is unavailable.");state.config=await response.json();const saved=sessionStorage.getItem("ft_session");if(saved){try{state.session=JSON.parse(saved);await showWorkspace()}catch{saveSession(null)}}}catch(e){message("auth-message",e.message,true)}}
+  $("register-key").addEventListener("click",registerKey);$("clear-key-form").addEventListener("click",clearKeyForm);$("key-pem").addEventListener("change",updateKeyFingerprint);
   $("sign-in").addEventListener("click",signIn);$("sign-up").addEventListener("click",signUp);$("sign-out").addEventListener("click",signOut);$("create-org").addEventListener("click",createOrganization);$("create-project").addEventListener("click",createProject);$("create-release").addEventListener("click",createRelease);$("refresh-workspace").addEventListener("click",loadOrganizations);
   $("org-name").addEventListener("input",()=>{if(!$("org-slug").dataset.edited)$("org-slug").value=slugify($("org-name").value)});$("org-slug").addEventListener("input",()=>{$("org-slug").dataset.edited="true"});
   $("project-name").addEventListener("input",()=>{if(!$("project-slug").dataset.edited)$("project-slug").value=slugify($("project-name").value)});$("project-slug").addEventListener("input",()=>{$("project-slug").dataset.edited="true"});
