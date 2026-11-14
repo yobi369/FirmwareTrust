@@ -13,6 +13,7 @@ FirmwareTrust registers public verification material only. Customer signing priv
 
 - Only organization owners, admins and security analysts can manage keys.
 - RLS scopes all reads and writes to organization membership and the key-management role.
+- Security-definer membership and audit helpers live in a non-exposed `private` schema; public RPCs for organization creation and key lifecycle use SECURITY INVOKER.
 - A partial unique index prevents duplicate active fingerprints within an organization/project scope.
 - The lifecycle trigger prevents public material, fingerprint, algorithm, ownership and scope from being changed after registration.
 - Only active keys may transition to rotated, revoked or expired.
