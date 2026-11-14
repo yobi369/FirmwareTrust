@@ -28,6 +28,9 @@ declare
   org_b uuid;
   project_a uuid;
   release_a uuid;
+  sbom_a uuid;
+  component_a uuid;
+  component_b uuid;
   key_a uuid;
   key_b uuid;
   n integer;
@@ -46,6 +49,24 @@ begin
   returning id into release_a;
   if not exists(select 1 from public.audit_events where organization_id=org_a and action='release.registered' and resource_id=release_a::text) then
     raise exception 'FAIL: release registration was not audited';
+  end if;
+
+  sbom_a := public.ingest_sbom(
+    org_a,project_a,release_a,'cyclonedx','1.6',repeat('b',64),
+    jsonb_build_object('bomFormat','CycloneDX','specVersion','1.6','components',jsonb_build_array(
+      jsonb_build_object('name','test-lib','version','1.2.3','purl','pkg:npm/test-lib@1.2.3'),
+      jsonb_build_object('name','other-lib','version','2.3.4','purl','pkg:pypi/other-lib@2.3.4')
+    )),
+    jsonb_build_array(
+      jsonb_build_object('component_name','test-lib','version','1.2.3','purl','pkg:npm/test-lib@1.2.3','license_expression','MIT','hashes',jsonb_build_object('SHA-256',repeat('a',64))),
+      jsonb_build_object('component_name','other-lib','version','2.3.4','purl','pkg:pypi/other-lib@2.3.4','license_expression','Apache-2.0','hashes',jsonb_build_object('SHA-256',repeat('c',64)))
+    )
+  );
+  select id into component_a from public.sbom_components where sbom_id=sbom_a and component_name='test-lib';
+  select id into component_b from public.sbom_components where sbom_id=sbom_a and component_name='other-lib';
+  if component_a is null or component_b is null then raise exception 'FAIL: SBOM component inventory was not persisted'; end if;
+  if not exists(select 1 from public.audit_events where organization_id=org_a and action='sbom.ingested' and resource_id=sbom_a::text) then
+    raise exception 'FAIL: SBOM ingestion was not audited';
   end if;
 
   insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
@@ -102,6 +123,14 @@ begin
   end if;
 
   perform set_config('request.jwt.claim.sub',developer_id::text,true);
+
+  insert into public.vulnerability_findings(organization_id,sbom_id,component_id,advisory_id,source,severity,summary)
+  values
+    (org_a,sbom_a,component_a,'TEST-OSV-ADVISORY','OSV.dev','high','Synthetic integration finding for component A'),
+    (org_a,sbom_a,component_b,'TEST-OSV-ADVISORY','OSV.dev','high','Synthetic integration finding for component B');
+  if (select count(*) from public.vulnerability_findings where sbom_id=sbom_a and advisory_id='TEST-OSV-ADVISORY') <> 2 then
+    raise exception 'FAIL: same advisory was not retained per affected component';
+  end if;
   begin
     perform public.revoke_signing_key(org_a,key_a,'developer must not revoke keys');
     raise exception 'FAIL: developer role revoked a signing key';
@@ -119,6 +148,8 @@ begin
   perform set_config('request.jwt.claim.sub',outsider_id::text,true);
   select count(*) into n from public.organizations where id=org_a;
   if n <> 0 then raise exception 'FAIL: cross-tenant organization read exposed % rows',n; end if;
+  select count(*) into n from public.sbom_documents where id=sbom_a;
+  if n <> 0 then raise exception 'FAIL: cross-tenant SBOM read exposed % rows',n; end if;
   begin
     perform public.revoke_signing_key(org_a,key_b,'outsider must not revoke');
     raise exception 'FAIL: non-member revoked another tenant key';
