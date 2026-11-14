@@ -73,7 +73,10 @@ export function deduplicateComponents(rows: NormalizedComponent[]): NormalizedCo
 export function purlHasVersion(purl: string): boolean {
   const path = purl.split(/[?#]/)[0];
   const slash = path.indexOf("/");
-  return slash >= 0 && path.lastIndexOf("@") > slash;
+  if (slash < 0) return false;
+  const packagePath = path.slice(slash + 1);
+  const lastPackageSlash = packagePath.lastIndexOf("/");
+  return packagePath.lastIndexOf("@") > lastPackageSlash;
 }
 
 export function severityOf(vuln: any): string | null {
