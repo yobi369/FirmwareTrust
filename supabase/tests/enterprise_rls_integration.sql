@@ -50,6 +50,7 @@ declare
   api_token_secret2 text;
   api_token_verify_result jsonb;
   stored_token_hash text;
+  api_token_verification jsonb;
 begin
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   org_a := public.create_organization('FirmwareTrust Test Org','ft-test-org-rls-20261114');
@@ -233,10 +234,25 @@ begin
   where id=sbom_a;
 
   api_token_result := public.create_api_token(
-    org_a,'Integration release API token',array['releases:write'],array[project_a],now()+interval '30 days'
+    org_a,'Integration release API token',array['releases:write','releases:read','keys:read','audit:read'],array[project_a],now()+interval '30 days'
   );
   api_token_id2 := (api_token_result->>'id')::uuid;
   api_token_secret2 := api_token_result->>'token';
+
+  set local role anon;
+  perform set_config('request.jwt.claim.role','anon',true);
+  api_token_verification := public.verify_api_token(api_token_secret2,'releases:read',project_a);
+  if api_token_verification->>'token_id' is distinct from api_token_id2::text then
+    raise exception 'FAIL: anonymous API gateway token verification did not return the expected token';
+  end if;
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  begin
+    perform public.create_api_token(org_a,'Unsupported SBOM token',array['sboms:write'],array[project_a],now()+interval '30 days');
+    raise exception 'FAIL: API token scope without a deployed route was accepted';
+  exception when check_violation then null;
+  end;
 
   -- Exercise the trusted registration boundary with a disposable, project-scoped API token.
   set local role service_role;
