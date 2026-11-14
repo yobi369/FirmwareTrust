@@ -31,7 +31,7 @@ FirmwareTrust extends the existing local signing and verification workbench into
 - An organization is the security boundary.
 - A project belongs to exactly one organization.
 - A user can belong to multiple organizations with different roles.
-- Membership roles: `owner`, `admin`, `security_reviewer`, `release_manager`, `developer`, `viewer`.
+- Membership roles: `owner`, `admin`, `security_analyst`, `release_manager`, `developer`, `viewer`.
 - Role names are not sufficient on their own: every operation also checks organization membership, project scope, resource state and required approval separation.
 - Invitations are time-limited, single-use and bound to the intended email address.
 - Organization deletion and export require explicit owner confirmation and auditable lifecycle events.
