@@ -1,3 +1,4 @@
+import { apiTokenAllows, type ApiTokenRecord } from "../_shared/api_tokens.ts";
 import { verifyEd25519Manifest } from "./verification.ts";
 
 const corsHeaders={
@@ -53,7 +54,10 @@ Deno.serve(async(req)=>{
       const status=authResult.status===403?403:401;
       return respond({error:status===403?"API token scope or project access denied":"API token is invalid, expired or revoked"},status);
     }
-    const claims=authResult.value as {token_id:string;organization_id:string;created_by:string;scopes:string[];project_ids:string[]};
+    const claims=authResult.value as ApiTokenRecord & {token_id:string};
+    if(!apiTokenAllows(claims,tokenMatch[1],claims.organization_id,projectId||"",requiredScope)){
+      return respond({error:"API token scope or project access denied"},403);
+    }
     if(req.method==="GET"){
       const query=new URLSearchParams({
         select:"id,project_id,version,artifact_name,artifact_sha256,status,created_at,published_at",
