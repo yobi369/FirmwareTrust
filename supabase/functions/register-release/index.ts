@@ -82,6 +82,7 @@ Deno.serve(async (request: Request) => {
     let actorId: string;
     let lookupHeaders: Record<string, string> = headers;
     let apiTokenId: string | null = null;
+    let apiTokenHash: string | null = null;
     const userResponse = await fetch(supabaseUrl + "/auth/v1/user", { headers });
     if (userResponse.ok) {
       const user = await userResponse.json();
@@ -90,10 +91,10 @@ Deno.serve(async (request: Request) => {
     } else {
       const bearerToken = authorization.replace(/^Bearer\\s+/i, "");
       if (!bearerToken.startsWith("ft_live_")) return respond({ error: "Authentication required" }, 401);
-      const tokenHash = await hashApiToken(bearerToken);
+      apiTokenHash = await hashApiToken(bearerToken);
       const tokenQuery = new URLSearchParams({
         select: "id,organization_id,created_by,scopes,project_ids,expires_at,revoked_at",
-        token_hash: "eq." + tokenHash,
+        token_hash: "eq." + apiTokenHash,
         limit: "2"
       });
       const tokenResponse = await fetch(supabaseUrl + "/rest/v1/api_tokens?" + tokenQuery.toString(), { headers: serviceHeaders });
@@ -159,7 +160,7 @@ Deno.serve(async (request: Request) => {
     const manifestDigest = verification.manifestSha256;
     const signatureDigest = verification.signatureSha256;
 
-    const registrationResponse = await fetch(supabaseUrl + "/rest/v1/rpc/register_verified_release", {
+    const registrationResponse = await fetch(supabaseUrl + "/rest/v1/rpc/register_verified_release_with_token", {
       method: "POST",
       headers: { ...serviceHeaders, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -172,7 +173,8 @@ Deno.serve(async (request: Request) => {
         target_actor: actorId,
         target_key_fingerprint: signature.key_id.toLowerCase(),
         target_manifest_sha256: manifestDigest,
-        target_signature_sha256: signatureDigest
+        target_signature_sha256: signatureDigest,
+        target_api_token_hash: apiTokenHash
       })
     });
     const registrationBody = await registrationResponse.json().catch(() => null);
