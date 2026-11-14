@@ -22,8 +22,8 @@ Deno.serve(async(req)=>{
   if(req.method!=="GET"&&req.method!=="POST")return respond({error:"Method not allowed"},405);
   const url=new URL(req.url);
   const route=url.pathname.split("/").filter(Boolean).at(-1)||"";
-  if(!["releases","keys","audit"].includes(route))return respond({error:"Supported routes: /releases, /keys and /audit"},404);
-  if(req.method==="POST"&&route!=="releases")return respond({error:"POST is supported only for /releases"},405);
+  if(!["releases","keys","audit","sboms"].includes(route))return respond({error:"Supported routes: /releases, /keys, /audit and /sboms"},404);
+  if(req.method==="POST"&&!["releases","sboms"].includes(route))return respond({error:"POST is supported only for /releases and /sboms"},405);
 
   const authorization=req.headers.get("authorization")||"";
   const tokenMatch=authorization.match(/^Bearer (ft_live_[A-Za-z0-9_-]{43})$/);
@@ -46,7 +46,7 @@ Deno.serve(async(req)=>{
     }
     const projectId=String(req.method==="POST"?(body.project_id||""):(url.searchParams.get("project_id")||""));
     if(req.method==="POST"&&!projectId)return respond({error:"project_id is required"},400);
-    const requiredScope=req.method==="POST"?"releases:write":route==="releases"?"releases:read":route==="keys"?"keys:read":"audit:read";
+    const requiredScope=req.method==="POST"?(route==="releases"?"releases:write":"sboms:write"):route==="releases"?"releases:read":route==="keys"?"keys:read":"audit:read";
     const authResponse=await fetch(supabaseUrl+"/rest/v1/rpc/verify_api_token",{
       method:"POST",headers:publicHeaders,
       body:JSON.stringify({raw_token:tokenMatch[1],required_scope:requiredScope,target_project:projectId||null})
@@ -61,6 +61,17 @@ Deno.serve(async(req)=>{
       scopes:verified.scopes,project_ids:verified.project_ids,expires_at:verified.expires_at,revoked_at:null};
     if(!apiTokenAllows(claims,tokenMatch[1],claims.organization_id,projectId||"",requiredScope)){
       return respond({error:"API token scope or project access denied"},403);
+    }
+    if(req.method==="POST"&&route==="sboms"){
+      if(typeof body.document_text!=="string"||body.document_text.length<2)return respond({error:"document_text is required"},400);
+      if(body.organization_id&&body.organization_id!==claims.organization_id)return respond({error:"Organization does not match the API token"},403);
+      const upstream=await fetch(supabaseUrl+"/functions/v1/ingest-sbom",{
+        method:"POST",
+        headers:{apikey:publishableKey,Authorization:"Bearer "+tokenMatch[1],"Content-Type":"application/json"},
+        body:JSON.stringify({...body,organization_id:claims.organization_id})
+      });
+      const result=await jsonResponse(upstream);
+      return respond(result.value||{error:"SBOM ingestion service failed"},result.status);
     }
     if(req.method==="GET"&&route==="releases"){
       const query=new URLSearchParams({
