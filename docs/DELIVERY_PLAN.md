@@ -63,7 +63,7 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 
 ### 6. CI/CD
 - [x] Issue 256-bit random API tokens once, store SHA-256 hashes only, show safe metadata, scope to selected projects or explicitly to the organization, enforce expiry and irreversible revocation.
-- [x] Restrict current token scope to `releases:write`; other scope values remain disabled until matching endpoints are implemented.
+- [x] Enable API gateway scopes for `releases:write`, `releases:read`, `keys:read` and `audit:read`; keep `sboms:write` disabled until its gateway route is implemented.
 - [x] Authenticate API tokens in `register-release`, revalidate token scope/revocation/expiry inside the same database transaction as release+attestation creation, and serialize registration against revocation.
 - [ ] Add live CI-provider end-to-end tests and usage telemetry/rate limits.
 - [ ] Add signed webhooks, replay protection and webhook delivery tests.
