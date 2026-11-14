@@ -1,5 +1,8 @@
 # FirmwareTrust
 
+**Public product showcase:** https://firmwaretrust.vercel.app
+
+
 **Firmware integrity, signing and release verification.**
 
 FirmwareTrust is a software-first engineering project for producing verifiable firmware release artifacts and auditable metadata.
