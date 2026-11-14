@@ -43,6 +43,10 @@ declare
   key_b uuid;
   n integer;
   approval_result jsonb;
+  api_token_result jsonb;
+  api_token_id uuid;
+  api_token_secret text;
+  stored_token_hash text;
 begin
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   org_a := public.create_organization('FirmwareTrust Test Org','ft-test-org-rls-20261114');
@@ -53,6 +57,45 @@ begin
   insert into public.projects(organization_id,name,slug,created_by)
   values(org_a,'FirmwareTrust Test Project','ft-test-project',owner_id)
   returning id into project_a;
+
+  api_token_result := public.create_api_token(
+    org_a,'Integration CI token',array['releases:write'],array[project_a],now()+interval '30 days'
+  );
+  api_token_id := (api_token_result->>'id')::uuid;
+  api_token_secret := api_token_result->>'token';
+  if api_token_id is null or api_token_secret not like 'ft_live_%' then
+    raise exception 'FAIL: API token was not generated and returned once';
+  end if;
+  if not exists(
+    select 1 from public.api_tokens t
+    where t.id=api_token_id
+      and t.token_hash=encode(extensions.digest(convert_to(api_token_secret,'utf8'),'sha256'),'hex')
+      and t.token_prefix=left(api_token_secret,16)
+      and t.project_ids=array[project_a]
+  ) then
+    raise exception 'FAIL: API token hash, prefix or project scope was not stored correctly';
+  end if;
+  begin
+    select t.token_hash into stored_token_hash from public.api_tokens t where t.id=api_token_id;
+    raise exception 'FAIL: authenticated client can read the stored API token hash';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.api_tokens(organization_id,name,token_prefix,token_hash,scopes,created_by)
+    values(org_a,'forged token','ft_live_forged',repeat('a',64),array['releases:write'],owner_id);
+    raise exception 'FAIL: authenticated client inserted an API token directly';
+  exception when insufficient_privilege then null;
+  end;
+  perform public.revoke_api_token(org_a,api_token_id);
+  if not exists(select 1 from public.api_tokens where id=api_token_id and revoked_at is not null) then
+    raise exception 'FAIL: API token revocation was not persisted';
+  end if;
+  perform public.revoke_api_token(org_a,api_token_id);
+  begin
+    update public.api_tokens set revoked_at=null where id=api_token_id;
+    raise exception 'FAIL: authenticated client reversed API token revocation';
+  exception when insufficient_privilege then null;
+  end;
   insert into public.releases(organization_id,project_id,version,artifact_name,artifact_sha256,manifest,status,created_by)
   values(org_a,project_a,'0.0.1','test-firmware.bin',repeat('a',64),jsonb_build_object('source','integration-test'),'draft',owner_id)
   returning id into release_a;
