@@ -1,5 +1,7 @@
 # FirmwareTrust
 
+[![CI](https://github.com/yobi369/FirmwareTrust/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yobi369/FirmwareTrust/actions/workflows/ci.yml) [![Live showcase](https://img.shields.io/badge/showcase-live-0f9d8a)](https://firmwaretrust.vercel.app)
+
 **Public product showcase:** https://firmwaretrust.vercel.app
 
 
