@@ -152,7 +152,7 @@ Deno.serve(async (request: Request) => {
     });
     let inserted = 0;
     if (findings.length) {
-      const insertUrl = supabaseUrl + "/rest/v1/vulnerability_findings?on_conflict=sbom_id,advisory_id,source";
+      const insertUrl = supabaseUrl + "/rest/v1/vulnerability_findings?on_conflict=sbom_id,advisory_id,source,component_id";
       for (let offset=0; offset<findings.length; offset+=500) {
         const insertResponse = await fetch(insertUrl, { method: "POST", headers: { ...headers, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify(findings.slice(offset,offset+500)) });
         if (!insertResponse.ok) { detailFailures++; break; }
