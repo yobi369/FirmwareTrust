@@ -36,6 +36,7 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 - [x] Normalize and deduplicate components by purl/name/version and retain document SHA-256 evidence.
 - [x] Add atomic tenant-scoped SBOM ingestion and audit event creation through the authenticated database RPC.
 - [x] Integrate OSV.dev querybatch and hydrate advisory details; persist findings per affected component with source modification timestamps.
+- [x] Persist scan status, scan source/time, checked-component count, finding count and partial-scan warnings on each SBOM record.
 - [x] Surface SBOM inventory and recent vulnerability findings in the Enterprise Console.
 - [ ] Implement OSV pagination continuation, scheduled rescans, freshness alerts, triage, false-positive exceptions and exception expiry.
 - [ ] Add Edge Function tests for malformed documents, duplicate components, unmatched PURLs, OSV partial/unavailable states and cross-tenant denial.
