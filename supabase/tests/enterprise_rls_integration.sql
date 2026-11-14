@@ -169,6 +169,7 @@ begin
   if release_b is null or not exists(select 1 from public.release_verification_attestations where release_id=release_b) then
     raise exception 'FAIL: trusted registration did not atomically create a verification attestation';
   end if;
+  update public.sbom_documents set release_id=release_b where id=sbom_a;
   perform public.request_release_approval(release_b);
   perform set_config('request.jwt.claim.sub',reviewer_user_id::text,true);
   approval_result := public.submit_release_approval(release_b,'approved','Independent approval for complete verified release evidence');
