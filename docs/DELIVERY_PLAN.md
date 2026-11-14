@@ -62,10 +62,12 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 - [ ] Test policy changes after approval, expired exceptions and reviewer independence.
 
 ### 6. CI/CD
-- Implement scoped, hashed API tokens and revocation.
-- Implement signed webhooks and replay protection.
-- Provide GitHub Actions and generic shell examples.
-- Test token scope, token leakage prevention, webhook retries and idempotency.
+- [x] Issue 256-bit random API tokens once, store SHA-256 hashes only, show safe metadata, scope to selected projects or explicitly to the organization, enforce expiry and irreversible revocation.
+- [x] Restrict current token scope to `releases:write`; other scope values remain disabled until matching endpoints are implemented.
+- [x] Authenticate API tokens in `register-release`, revalidate token scope/revocation/expiry inside the same database transaction as release+attestation creation, and serialize registration against revocation.
+- [ ] Add live CI-provider end-to-end tests and usage telemetry/rate limits.
+- [ ] Add signed webhooks, replay protection and webhook delivery tests.
+- [ ] Provide GitHub Actions and generic shell examples.
 
 ## Release gates
 
