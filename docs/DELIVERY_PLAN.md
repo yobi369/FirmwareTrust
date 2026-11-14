@@ -1,6 +1,6 @@
 # Enterprise Delivery Plan
 
-This plan turns the FirmwareTrust feature set into testable delivery gates. Status is deliberately conservative: the dedicated backend and initial tenant schema are deployed; the first authenticated organization/project/release console is in preview and has not yet passed end-to-end security validation.
+This plan turns the FirmwareTrust feature set into testable delivery gates. Status is deliberately conservative: the dedicated backend and initial tenant schema are deployed; the authenticated organization/project/release console is in preview. Database-level authenticated security tests now pass, while browser-driven auth/session validation and production operations remain open.
 
 ## Workstreams
 
@@ -8,8 +8,9 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 - [x] Provision a dedicated Supabase project for FirmwareTrust (EU West, quoted $0/month).
 - [x] Deploy initial organization, membership, project, release, key, SBOM, policy, approval, token, webhook and audit schema.
 - [x] Enable tenant RLS and add owner succession, audit append-only and approval separation controls.
-- [ ] Complete auth/session lifecycle, invitation flow and cross-tenant negative integration tests.
-- Test cross-tenant reads/writes, invitation expiry/replay and owner succession.
+- [x] Secure creator-only first-owner bootstrap through a narrow private SECURITY DEFINER helper; the public RPC remains SECURITY INVOKER.
+- [x] Add and execute transactional authenticated RLS integration coverage for first-owner bootstrap and cross-tenant read denial.
+- [ ] Complete browser-driven auth/session lifecycle, invitation flow, cross-tenant write tests and owner succession.
 
 ### 2. Registry and audit
 - Register immutable release metadata and signed manifests.
@@ -21,7 +22,8 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 - [x] Register public keys and SHA-256 fingerprints; keep private keys customer-controlled.
 - [x] Implement atomic rotation, predecessor/successor relationships and irreversible revocation with reasons.
 - [x] Preserve historical public-key evidence and append audit events for rotation/revocation.
-- [ ] Add authenticated integration tests for compromised-key response, role denial, cross-tenant denial, duplicate fingerprints, immutable fields and transaction rollback.
+- [x] Add and execute authenticated integration tests for role denial, cross-tenant denial, duplicate fingerprints, immutable fields, rotation, revocation, audit-chain continuity and transaction rollback.
+- [ ] Add compromised-key response tests against the future online verifier.
 - [ ] Connect key revocation status to every release verification path.
 
 ### 4. SBOM and vulnerability intelligence
@@ -68,4 +70,4 @@ A capability is not complete because a screen or endpoint exists. It must have:
 
 FirmwareTrust now has a dedicated Supabase project (`dyqhzbsfopzejhqwdzgg`) separate from the user's unrelated databases. Its first tenant schema and security hardening migrations are deployed. The Vercel project has the public Supabase URL and publishable key configured; no service-role key is exposed to the browser.
 
-The initial authenticated console is deployed as a preview and supports account sign-in/sign-up, organization creation, project creation and draft release metadata. It still requires end-to-end browser testing, auth configuration review, cross-tenant denial tests and operational validation. Team invitations, SBOM analysis, policy/approval execution, API token issuance, signed webhooks and enterprise reports are not yet implemented as complete hosted workflows. The key lifecycle UI and database transitions are implemented, but authenticated integration tests and wiring revocation state into every signature-verification path remain open. The latest Supabase security advisor scan is clear. Foreign-key indexes and overlapping permissive RLS policies have been addressed; remaining performance notices are unused-index observations on this newly provisioned, empty database and should be reassessed after representative workload data exists.
+The initial authenticated console is deployed as a preview and supports account sign-in/sign-up, organization creation, project creation and draft release metadata. A transactional SQL integration suite at `supabase/tests/enterprise_rls_integration.sql` has been executed successfully against the dedicated Supabase project. It covers first-owner bootstrap, cross-tenant reads, developer-role key restrictions, duplicate active fingerprints, immutable public-key material, key rotation/revocation and audit hash-chain continuity; fixtures are rolled back. The first-owner bootstrap was hardened in migration `202611140009_secure_private_organization_bootstrap.sql` after the live test exposed an RLS failure in the earlier invoker-only path. Browser-driven auth/session testing, invitation expiry/replay, cross-tenant write coverage and production operational validation remain open. Team invitations, SBOM analysis, policy/approval execution, API token issuance, signed webhooks and enterprise reports are not yet implemented as complete hosted workflows. Wiring revocation state into every signature-verification path remains open. The latest Supabase security advisor scan is clear. Foreign-key indexes and overlapping permissive RLS policies have been addressed; remaining performance notices are unused-index observations on this newly provisioned database and should be reassessed after representative workload data exists.
