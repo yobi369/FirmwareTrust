@@ -45,7 +45,9 @@ declare
   approval_result jsonb;
   api_token_result jsonb;
   api_token_id uuid;
+  api_token_id2 uuid;
   api_token_secret text;
+  api_token_secret2 text;
   api_token_verify_result jsonb;
   stored_token_hash text;
 begin
@@ -230,18 +232,52 @@ begin
   set scan_status='complete',scanned_at=now(),scanned_component_count=2,finding_count=0,scan_warning=null
   where id=sbom_a;
 
-  -- Exercise the trusted registration boundary with a disposable service-role fixture.
+  api_token_result := public.create_api_token(
+    org_a,'Integration release API token',array['releases:write'],array[project_a],now()+interval '30 days'
+  );
+  api_token_id2 := (api_token_result->>'id')::uuid;
+  api_token_secret2 := api_token_result->>'token';
+
+  -- Exercise the trusted registration boundary with a disposable, project-scoped API token.
   set local role service_role;
   perform set_config('request.jwt.claim.role','service_role',true);
-  perform public.register_verified_release(
+  select t.token_hash into stored_token_hash from public.api_tokens t where t.id=api_token_id2;
+  if stored_token_hash<>encode(extensions.digest(convert_to(api_token_secret2,'utf8'),'sha256'),'hex') then
+    raise exception 'FAIL: second API token hash was not stored correctly';
+  end if;
+  perform public.register_verified_release_with_token(
     org_a,project_a,'0.0.2','verified-firmware.bin',repeat('e',64),
     jsonb_build_object(
       'trust_registry',jsonb_build_object('provider','firmwaretrust','organization_id',org_a::text,'project_id',project_a::text),
       'signature',jsonb_build_object('algorithm','Ed25519','key_id',fp_c,'value','c2lnbmF0dXJl'),
       'artifact',jsonb_build_object('filename','verified-firmware.bin','digest_algorithm','sha256','digest',repeat('e',64),'size_bytes',1)
     ),
-    owner_id,fp_c,repeat('f',64),repeat('a',64)
+    owner_id,fp_c,repeat('f',64),repeat('a',64),stored_token_hash
   );
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  select id into release_b from public.releases where organization_id=org_a and version='0.0.2';
+  if release_b is null or not exists(select 1 from public.release_verification_attestations where release_id=release_b) then
+    raise exception 'FAIL: API-token registration did not atomically create a verification attestation';
+  end if;
+  update public.sbom_documents set release_id=release_b where id=sbom_a;
+  perform public.revoke_api_token(org_a,api_token_id2);
+  set local role service_role;
+  perform set_config('request.jwt.claim.role','service_role',true);
+  begin
+    perform public.register_verified_release_with_token(
+      org_a,project_a,'0.0.3','revoked-token.bin',repeat('1',64),
+      jsonb_build_object(
+        'trust_registry',jsonb_build_object('provider','firmwaretrust','organization_id',org_a::text,'project_id',project_a::text),
+        'signature',jsonb_build_object('algorithm','Ed25519','key_id',fp_c,'value','c2lnbmF0dXJl'),
+        'artifact',jsonb_build_object('filename','revoked-token.bin','digest_algorithm','sha256','digest',repeat('1',64),'size_bytes',1)
+      ),
+      owner_id,fp_c,repeat('2',64),repeat('3',64),stored_token_hash
+    );
+    raise exception 'FAIL: revoked API token authorized a new release registration';
+  exception when insufficient_privilege then null;
+  end;
   set local role authenticated;
   perform set_config('request.jwt.claim.role','authenticated',true);
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
