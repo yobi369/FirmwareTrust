@@ -11,3 +11,12 @@
 #invite-card{border-color:var(--line-strong)}
 #invite-message.error,#invite-result.error{color:var(--danger,#d45b5b)}
 @media(max-width:700px){.invite-link-row{align-items:stretch;flex-direction:column}.invite-link-row .btn{width:100%}}
+
+.token-scope-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:18px 0}
+.token-scope-grid label,.token-org-wide{display:flex!important;align-items:center;gap:10px!important;background:#071521;border:1px solid #233a4c;border-radius:9px;padding:12px}
+.token-scope-grid input,.token-org-wide input,.token-projects input{width:auto!important;margin:0}
+.token-org-wide{margin:12px 0}
+.token-projects{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:10px 0 18px}
+.token-projects label{display:flex!important;align-items:center;gap:8px!important;padding:9px 11px;background:#071521;border:1px solid #233a4c;border-radius:8px}
+.token-projects input:disabled{opacity:.45}
+@media(max-width:700px){.token-scope-grid,.token-projects{grid-template-columns:1fr}}
