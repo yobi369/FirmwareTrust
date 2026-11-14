@@ -1,7 +1,7 @@
 "use strict";
 (() => {
   const $ = id => document.getElementById(id);
-  const state = { config:null, session:null, organizations:[], organization:null, projects:[], project:null, releases:[], policies:[] };
+  const state = { config:null, session:null, organizations:[], organization:null, organizationRole:null, projects:[], project:null, releases:[], policies:[], invitationToken:null };
   const esc = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const slugify = value => value.toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,63);
   const message = (id,text,error=false) => { const el=$(id);el.textContent=text;el.classList.toggle("error",error); };
@@ -20,7 +20,7 @@
   function saveSession(session){state.session=session;if(session)sessionStorage.setItem("ft_session",JSON.stringify(session));else sessionStorage.removeItem("ft_session");}
   async function signIn(){try{const email=$("auth-email").value.trim(),password=$("auth-password").value;if(!email||!password)throw new Error("Enter your email and password.");const data=await authRequest("token?grant_type=password",{email,password});if(!data.access_token)throw new Error("No active session returned. Check email confirmation settings.");saveSession(data);await showWorkspace();}catch(e){message("auth-message",e.message,true)}}
   async function signUp(){try{const email=$("auth-email").value.trim(),password=$("auth-password").value;if(!email||password.length<8)throw new Error("Enter a valid email and a password of at least 8 characters.");const data=await authRequest("signup",{email,password});if(data.access_token){saveSession(data);await showWorkspace();}else message("auth-message","Account created. Check your email to confirm the address, then sign in.");}catch(e){message("auth-message",e.message,true)}}
-  async function showWorkspace(){$("auth-card").classList.add("hidden");$("workspace").classList.remove("hidden");$("signed-in-as").textContent=state.session.user?.email||"Signed in";await loadOrganizations();}
+  async function showWorkspace(){$("auth-card").classList.add("hidden");$("workspace").classList.remove("hidden");$("signed-in-as").textContent=state.session.user?.email||"Signed in";await loadOrganizations();renderInviteCard();}
   async function loadOrganizations(){
     const list=$("org-list");list.innerHTML="<p class='muted'>Loading organizations…</p>";
     try{state.organizations=await request("/rest/v1/organizations?select=id,name,slug,created_at&order=created_at.desc")||[];
@@ -31,7 +31,56 @@
     }catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}
   }
   async function createOrganization(){try{const name=$("org-name").value.trim(),slug=slugify($("org-slug").value||name);if(name.length<2||slug.length<2)throw new Error("Enter an organization name and valid slug.");await request("/rest/v1/rpc/create_organization",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({org_name:name,org_slug:slug})});$("org-name").value="";$("org-slug").value="";message("auth-message","Organization created. You are its owner.");await loadOrganizations();}catch(e){message("auth-message",e.message,true)}}
-  async function selectOrganization(id){state.organization=state.organizations.find(org=>org.id===id)||null;if(!state.organization)return;state.project=null;$("project-tools").classList.remove("hidden");$("project-heading").textContent=state.organization.name+" · Projects";$("project-subtitle").textContent="Create and manage projects inside this organization.";["release-tools","key-tools","sbom-tools","policy-tools"].forEach(id=>$(id).classList.add("hidden"));await loadProjects();}
+  async function selectOrganization(id){state.organization=state.organizations.find(org=>org.id===id)||null;if(!state.organization)return;state.project=null;$("project-tools").classList.remove("hidden");$("project-heading").textContent=state.organization.name+" · Projects";$("project-subtitle").textContent="Create and manage projects inside this organization.";["release-tools","key-tools","sbom-tools","policy-tools"].forEach(id=>$(id).classList.add("hidden"));const membership=await request("/rest/v1/organization_memberships?select=role&organization_id=eq."+encodeURIComponent(state.organization.id)+"&user_id=eq."+encodeURIComponent(state.session.user.id)+"&limit=1");state.organizationRole=membership?.[0]?.role||null;if(["owner","admin"].includes(state.organizationRole)){$("team-tools").classList.remove("hidden");await loadInvitations();}else $("team-tools").classList.add("hidden");await loadProjects();}
+  function renderInviteCard(){
+    const card=$("invite-card");if(!card)return;
+    if(state.invitationToken){card.classList.remove("hidden");$("accept-invitation").disabled=!state.session;$("invite-message").textContent=state.session?"Signed in as "+(state.session.user?.email||"your account")+". Accept to join the organization.":"Sign in or create an account with the invited email address to continue.";}
+    else card.classList.add("hidden");
+  }
+  async function loadInvitations(){
+    if(!state.organization||!["owner","admin"].includes(state.organizationRole))return;
+    const list=$("invite-list");list.innerHTML="<p class='muted'>Loading invitations…</p>";
+    try{
+      const rows=await request("/rest/v1/organization_invitations?select=id,email,role,expires_at,accepted_at,revoked_at,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&order=created_at.desc&limit=50")||[];
+      list.innerHTML=rows.length?rows.map(invite=>{
+        const expired=Date.parse(invite.expires_at)<=Date.now();
+        const status=invite.accepted_at?"Accepted":invite.revoked_at?"Revoked":expired?"Expired":"Pending";
+        return "<div class='record-item'><div><strong>"+esc(invite.email)+" · "+esc(invite.role)+"</strong><small>"+status+" · expires "+new Date(invite.expires_at).toLocaleString()+"</small></div>"+(!invite.accepted_at&&!invite.revoked_at&&!expired?"<button class='btn danger' data-revoke-invite='"+esc(invite.id)+"'>Revoke</button>":"")+"</div>";
+      }).join(""):"<p class='muted'>No team invitations have been created.</p>";
+      list.querySelectorAll("[data-revoke-invite]").forEach(button=>button.addEventListener("click",()=>revokeInvitation(button.dataset.revokeInvite)));
+    }catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}
+  }
+  async function createInvitation(){
+    try{
+      if(!state.organization||!["owner","admin"].includes(state.organizationRole))throw new Error("Only organization owners and admins can invite members.");
+      const email=$("invite-email").value.trim(),role=$("invite-role").value,days=Number($("invite-expiry").value);
+      if(!email)throw new Error("Enter the invitee email address.");
+      const result=await request("/rest/v1/rpc/create_organization_invitation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target_org:state.organization.id,target_email:email,target_role:role,expires_in_days:days})});
+      const link=window.location.origin+"/enterprise.html?invite="+encodeURIComponent(result.token);
+      $("invite-link").value=link;$("copy-invite-link").disabled=false;$("invite-email").value="";
+      message("invite-result","Invitation created for "+result.email+". Share this link with the invitee; the token is shown only once and expires "+new Date(result.expires_at).toLocaleString()+".");
+      await loadInvitations();
+    }catch(e){message("invite-result",e.message,true)}
+  }
+  async function copyInvitationLink(){
+    const link=$("invite-link").value;if(!link)return;
+    try{await navigator.clipboard.writeText(link);message("invite-result","Invitation link copied. Share it only with the intended invitee.");}
+    catch{ $("invite-link").focus();$("invite-link").select();message("invite-result","Select and copy the invitation link manually.");}
+  }
+  async function revokeInvitation(invitationId){
+    try{await request("/rest/v1/rpc/revoke_organization_invitation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target_invitation:invitationId})});message("invite-result","Invitation revoked.");await loadInvitations();}
+    catch(e){message("invite-result",e.message,true)}
+  }
+  async function acceptInvitation(){
+    try{
+      if(!state.session)throw new Error("Sign in or create an account using the invited email address first.");
+      if(!state.invitationToken)throw new Error("No invitation token was found in this link.");
+      const result=await request("/rest/v1/rpc/accept_organization_invitation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({invitation_token:state.invitationToken})});
+      state.invitationToken=null;const url=new URL(window.location.href);url.searchParams.delete("invite");window.history.replaceState({}, "", url.toString());
+      $("invite-card").classList.add("hidden");message("auth-message","Invitation accepted. You joined the organization as "+result.role+".");
+      state.organization=null;await loadOrganizations();const org=state.organizations.find(item=>item.id===result.organization_id);if(org)await selectOrganization(org.id);
+    }catch(e){message("invite-message",e.message,true)}
+  }
   async function loadProjects(){const list=$("project-list");list.innerHTML="<p class='muted'>Loading projects…</p>";try{state.projects=await request("/rest/v1/projects?select=id,name,slug,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&order=created_at.desc")||[];if(!state.projects.length){list.innerHTML="<p class='muted'>No projects yet. Create the first project.</p>";return;}list.innerHTML=state.projects.map(project=>"<div class='record-item "+(state.project?.id===project.id?"selected":"")+"'><div><strong>"+esc(project.name)+"</strong><small>"+esc(project.slug)+"</small><small>Project ID: <code>"+esc(project.id)+"</code></small></div><button class='btn ghost' data-project='"+esc(project.id)+"'>Releases</button></div>").join("");list.querySelectorAll("[data-project]").forEach(button=>button.addEventListener("click",()=>selectProject(button.dataset.project)));}catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}}
   async function createProject(){try{const name=$("project-name").value.trim(),slug=slugify($("project-slug").value||name);if(!state.organization||name.length<2||slug.length<2)throw new Error("Choose an organization and enter a valid project name.");await request("/rest/v1/projects",{method:"POST",headers:{"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({organization_id:state.organization.id,name,slug,created_by:state.session.user.id})});$("project-name").value="";$("project-slug").value="";await loadProjects();}catch(e){message("auth-message",e.message,true)}}
   async function selectProject(id){state.project=state.projects.find(project=>project.id===id)||null;if(!state.project)return;$("release-tools").classList.remove("hidden");$("key-tools").classList.remove("hidden");$("sbom-tools").classList.remove("hidden");$("policy-tools").classList.remove("hidden");$("release-subtitle").textContent="Draft releases for "+state.project.name+". Registry stores metadata and digests, not firmware binaries.";await Promise.all([loadReleases(),loadKeys(),loadSboms(),loadPolicies()]);await loadProjects();}
@@ -193,9 +242,9 @@
     }catch(e){message("policy-result",e.message,true)}
   }
   function clearKeyForm(){$("key-pem").value="";$("key-fingerprint").value="";}
-  async function signOut(){try{if(token())await fetch(state.config.url+"/auth/v1/logout",{method:"POST",headers:headers()})}catch{}saveSession(null);state.organization=null;state.project=null;$("workspace").classList.add("hidden");$("auth-card").classList.remove("hidden");message("auth-message","Signed out.");}
-  async function init(){try{const response=await fetch("/api/config",{cache:"no-store"});if(!response.ok)throw new Error("Enterprise backend configuration is unavailable.");state.config=await response.json();const saved=sessionStorage.getItem("ft_session");if(saved){try{state.session=JSON.parse(saved);await showWorkspace()}catch{saveSession(null)}}}catch(e){message("auth-message",e.message,true)}}
-  $("register-key").addEventListener("click",registerKey);$("clear-key-form").addEventListener("click",clearKeyForm);$("key-pem").addEventListener("change",updateKeyFingerprint);
+  async function signOut(){try{if(token())await fetch(state.config.url+"/auth/v1/logout",{method:"POST",headers:headers()})}catch{}saveSession(null);state.organization=null;state.organizationRole=null;state.project=null;$("team-tools").classList.add("hidden");$("workspace").classList.add("hidden");$("auth-card").classList.remove("hidden");renderInviteCard();message("auth-message","Signed out.");}
+  async function init(){try{state.invitationToken=new URLSearchParams(window.location.search).get("invite");renderInviteCard();const response=await fetch("/api/config",{cache:"no-store"});if(!response.ok)throw new Error("Enterprise backend configuration is unavailable.");state.config=await response.json();const saved=sessionStorage.getItem("ft_session");if(saved){try{state.session=JSON.parse(saved);await showWorkspace()}catch{saveSession(null)}}}catch(e){message("auth-message",e.message,true)}}
+  $("create-invitation").addEventListener("click",createInvitation);$("copy-invite-link").addEventListener("click",copyInvitationLink);$("accept-invitation").addEventListener("click",acceptInvitation);$("register-key").addEventListener("click",registerKey);$("clear-key-form").addEventListener("click",clearKeyForm);$("key-pem").addEventListener("change",updateKeyFingerprint);
   $("sign-in").addEventListener("click",signIn);$("sign-up").addEventListener("click",signUp);$("sign-out").addEventListener("click",signOut);$("create-org").addEventListener("click",createOrganization);$("create-project").addEventListener("click",createProject);$("create-release").addEventListener("click",createRelease);$("create-policy").addEventListener("click",createPolicy);$("evaluate-policy").addEventListener("click",evaluatePolicy);$("ingest-sbom").addEventListener("click",ingestSbom);$("refresh-workspace").addEventListener("click",loadOrganizations);
   $("org-name").addEventListener("input",()=>{if(!$("org-slug").dataset.edited)$("org-slug").value=slugify($("org-name").value)});$("org-slug").addEventListener("input",()=>{$("org-slug").dataset.edited="true"});
   $("project-name").addEventListener("input",()=>{if(!$("project-slug").dataset.edited)$("project-slug").value=slugify($("project-name").value)});$("project-slug").addEventListener("input",()=>{$("project-slug").dataset.edited="true"});
