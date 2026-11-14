@@ -36,6 +36,8 @@ Severity is not guessed. If the source does not provide a recognized severity, t
 
 The Edge Function requires a valid Supabase user JWT. The `ingest_sbom` database RPC is SECURITY INVOKER and checks the caller's organization role, project scope and optional release scope. RLS controls component and finding writes. Release-capable roles may ingest scan findings; triage/update/delete permissions remain restricted to security roles.
 
+Pure SBOM normalization and OSV mapping helpers have Deno unit tests; CI also type-checks the deployed Edge Function source.
+
 ## Remaining hardening
 
 The current implementation does not yet implement OSV pagination continuation, scheduled rescans, feed freshness alerts, vulnerability exceptions, approval gates, or a full false-positive/triage workflow. Those are separate delivery gates and must not be implied by an initial scan result.
