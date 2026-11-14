@@ -30,6 +30,7 @@ declare
   org_b uuid;
   project_a uuid;
   release_a uuid;
+  release_b uuid;
   sbom_a uuid;
   component_a uuid;
   component_b uuid;
@@ -140,6 +141,44 @@ begin
   insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
   values(org_a,fp_a,'Ed25519',pem_a,'active',owner_id)
   returning id into key_a;
+
+  insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
+  values(org_a,fp_c,'Ed25519',pem_c,'active',owner_id);
+
+  update public.sbom_documents
+  set scan_status='complete',scanned_at=now(),scanned_component_count=2,finding_count=0,scan_warning=null
+  where id=sbom_a;
+
+  -- Exercise the trusted registration boundary with a disposable service-role fixture.
+  set local role service_role;
+  perform set_config('request.jwt.claim.role','service_role',true);
+  perform public.register_verified_release(
+    org_a,project_a,'0.0.2','verified-firmware.bin',repeat('e',64),
+    jsonb_build_object(
+      'trust_registry',jsonb_build_object('provider','firmwaretrust','organization_id',org_a::text,'project_id',project_a::text),
+      'signature',jsonb_build_object('algorithm','Ed25519','key_id',fp_c,'value','c2lnbmF0dXJl'),
+      'artifact',jsonb_build_object('filename','verified-firmware.bin','digest_algorithm','sha256','digest',repeat('e',64),'size_bytes',1)
+    ),
+    owner_id,fp_c,repeat('f',64),repeat('a',64)
+  );
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  select id into release_b from public.releases where organization_id=org_a and version='0.0.2';
+  if release_b is null or not exists(select 1 from public.release_verification_attestations where release_id=release_b) then
+    raise exception 'FAIL: trusted registration did not atomically create a verification attestation';
+  end if;
+  perform public.request_release_approval(release_b);
+  perform set_config('request.jwt.claim.sub',reviewer_id::text,true);
+  perform public.submit_release_approval(release_b,'approved','Independent approval for complete verified release evidence');
+  if not exists(select 1 from public.releases where id=release_b and status='approved') then
+    raise exception 'FAIL: complete verified release did not advance to approved';
+  end if;
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  perform public.publish_release(release_b);
+  if not exists(select 1 from public.releases where id=release_b and status='published' and published_at is not null) then
+    raise exception 'FAIL: fully verified and approved release did not publish';
+  end if;
 
   begin
     insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
