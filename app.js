@@ -52,7 +52,6 @@ async function unlockVault(file,pass){
     const aes=await deriveVaultKey(pass,b64ToBytes(vault.salt),vault.iterations);
     const pkcs8=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64ToBytes(vault.iv)},aes,b64ToBytes(vault.ciphertext));
     const privateKey=await crypto.subtle.importKey("pkcs8",pkcs8,{name:"Ed25519"},false,["sign"]);
-    const pubRaw=b64ToBytes(vault.public_key_raw||"");
     return {privateKey,vault};
   }catch{throw new Error("Could not unlock the vault. Check the passphrase and file integrity.");}
 }
@@ -72,6 +71,9 @@ async function signRelease(){
   const raw=new Uint8Array(await crypto.subtle.exportKey("raw",publicKey));
   const id=await keyId(raw);
   if(id!==vaultJson.key_id)throw new Error("Vault public key fingerprint does not match its key ID.");
+  const challenge=crypto.getRandomValues(new Uint8Array(32));
+  const proof=new Uint8Array(await crypto.subtle.sign({name:"Ed25519"},privateKey,challenge));
+  if(!await crypto.subtle.verify({name:"Ed25519"},publicKey,proof,challenge))throw new Error("The private key does not match the public key stored in this vault.");
   const fileBytes=new Uint8Array(await firmware.arrayBuffer()), hash=hex(await digest(fileBytes));
   const payload={schema_version:"1.0",artifact:{filename:firmware.name,size_bytes:fileBytes.length,digest_algorithm:"sha256",digest:hash},signature:{algorithm:"Ed25519",key_id:id},created_at:new Date().toISOString().replace(/\.\d{3}Z$/,"Z")};
   const signature=new Uint8Array(await crypto.subtle.sign({name:"Ed25519"},privateKey,enc.encode(canonical(payload))));
