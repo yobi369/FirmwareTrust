@@ -62,7 +62,7 @@
       <label class="field full">Signed manifest (.json) <input id="verify-manifest" type="file" accept=".json,application/json"></label>
       <label class="field full">Trusted public key (.pem) <input id="verify-public" type="file" accept=".pem,.pub,text/plain"></label>
     </div>
-    <div class="actions"><button class="btn primary" id="verify-release">Verify release</button><button class="btn ghost" id="tamper-test" disabled>Run tamper-detection test</button></div>
+    <div class="actions"><button class="btn primary" id="verify-release">Verify release</button><button class="btn ghost" id="load-demo">Load sample release</button><button class="btn ghost" id="tamper-test" disabled>Run tamper-detection test</button></div><p class="hint">New here? Load a self-contained sample release generated with a temporary in-memory key, then verify it and run the tamper test.</p>
     <div class="result hidden" id="verify-result" aria-live="polite"></div>
     <div class="result hidden" id="tamper-result" aria-live="polite"></div>
   </section>
