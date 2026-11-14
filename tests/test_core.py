@@ -79,3 +79,55 @@ def test_keygen_refuses_to_overwrite_existing_key(tmp_path):
     with pytest.raises(FirmwareTrustError, match="overwrite"):
         generate_key_pair(private, public)
     assert private.read_text() == "preserve"
+
+
+
+def test_empty_firmware_can_be_signed_and_verified(tmp_path):
+    private, public = tmp_path / "private.pem", tmp_path / "public.pem"
+    firmware, manifest = tmp_path / "empty.bin", tmp_path / "empty.json"
+    generate_key_pair(private, public)
+    firmware.write_bytes(b"")
+    sign_firmware(firmware, private, manifest)
+    result = verify_firmware(firmware, manifest, public)
+    assert result["verified"] is True
+    assert result["size_bytes"] == 0
+
+
+def test_invalid_json_manifest_is_rejected(tmp_path):
+    private, public = tmp_path / "private.pem", tmp_path / "public.pem"
+    firmware, manifest = tmp_path / "image.bin", tmp_path / "image.json"
+    generate_key_pair(private, public)
+    firmware.write_bytes(b"payload")
+    manifest.write_text("{not-json", encoding="utf-8")
+    with pytest.raises(VerificationError, match="Malformed manifest"):
+        verify_firmware(firmware, manifest, public)
+
+
+def test_invalid_signature_encoding_is_rejected(tmp_path):
+    private, public = tmp_path / "private.pem", tmp_path / "public.pem"
+    firmware, manifest = tmp_path / "image.bin", tmp_path / "image.json"
+    generate_key_pair(private, public)
+    firmware.write_bytes(b"payload")
+    sign_firmware(firmware, private, manifest)
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    document["signature"]["value"] = "%%%not-base64%%%"
+    manifest.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(VerificationError, match="signature is invalid"):
+        verify_firmware(firmware, manifest, public)
+
+
+def test_manifest_with_invalid_root_type_is_rejected(tmp_path):
+    private, public = tmp_path / "private.pem", tmp_path / "public.pem"
+    firmware, manifest = tmp_path / "image.bin", tmp_path / "image.json"
+    generate_key_pair(private, public)
+    firmware.write_bytes(b"payload")
+    manifest.write_text("[]", encoding="utf-8")
+    with pytest.raises(VerificationError, match="Malformed manifest"):
+        verify_firmware(firmware, manifest, public)
+
+
+def test_key_pair_paths_must_be_distinct(tmp_path):
+    key_path = tmp_path / "same.pem"
+    with pytest.raises(FirmwareTrustError, match="must be different"):
+        generate_key_pair(key_path, key_path)
+    assert not key_path.exists()
