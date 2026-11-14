@@ -1,4 +1,4 @@
-import { apiTokenAllows, type ApiTokenRecord } from "./api_tokens.ts";
+import { apiTokenAllows, hashApiToken, type ApiTokenRecord } from "../_shared/api_tokens.ts";
 import { verifyEd25519Manifest } from "./verification.ts";
 
 const corsHeaders={
@@ -147,13 +147,15 @@ Deno.serve(async(req)=>{
     catch{return respond({error:"Manifest Ed25519 signature material is malformed"},422);}
     if(!verification.valid)return respond({error:"Manifest Ed25519 signature verification failed"},422);
 
-    const registration=await fetch(supabaseUrl+"/rest/v1/rpc/register_verified_release",{
+    const tokenHash=await hashApiToken(tokenMatch[1]);
+    const registration=await fetch(supabaseUrl+"/rest/v1/rpc/register_verified_release_with_token",{
       method:"POST",headers:serviceHeaders,
       body:JSON.stringify({
         target_org:claims.organization_id,target_project:projectId,target_version:version,
         target_artifact_name:artifactName,target_artifact_sha256:artifactSha,target_manifest:manifest,
         target_actor:claims.created_by,target_key_fingerprint:String(signature.key_id).toLowerCase(),
-        target_manifest_sha256:verification.manifestSha256,target_signature_sha256:verification.signatureSha256
+        target_manifest_sha256:verification.manifestSha256,target_signature_sha256:verification.signatureSha256,
+        target_api_token_hash:tokenHash
       })
     });
     const registered=await jsonResponse(registration);
