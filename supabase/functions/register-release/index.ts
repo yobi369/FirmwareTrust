@@ -71,19 +71,43 @@ Deno.serve(async (request: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const publishableRaw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
-  if (!supabaseUrl || !publishableRaw) return respond({ error: "Release registry is not configured" }, 503);
+  const secretRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (!supabaseUrl || !publishableRaw || !secretRaw) return respond({ error: "Release registry is not configured for trusted attestation" }, 503);
   let publishableKey: string;
+  let secretKey: string;
   try {
     publishableKey = JSON.parse(publishableRaw).default;
-    if (typeof publishableKey !== "string" || !publishableKey) throw new Error("Missing default publishable key");
+    secretKey = JSON.parse(secretRaw).default;
+    if (typeof publishableKey !== "string" || !publishableKey || typeof secretKey !== "string" || !secretKey) throw new Error("Missing default API keys");
   } catch { return respond({ error: "Release registry credentials are unavailable" }, 503); }
   const headers = { apikey: publishableKey, Authorization: authorization };
+  const serviceHeaders = { apikey: secretKey, Authorization: "Bearer " + secretKey };
 
   try {
     const userResponse = await fetch(supabaseUrl + "/auth/v1/user", { headers });
     if (!userResponse.ok) return respond({ error: "Authenticated user session is invalid" }, 401);
     const user = await userResponse.json();
     if (!user?.id) return respond({ error: "Authenticated user identity is unavailable" }, 401);
+
+    const membershipQuery = new URLSearchParams({
+      select: "role",
+      organization_id: "eq." + orgId,
+      user_id: "eq." + user.id,
+      limit: "1"
+    });
+    const membershipResponse = await fetch(supabaseUrl + "/rest/v1/organization_memberships?" + membershipQuery.toString(), { headers });
+    if (!membershipResponse.ok) return respond({ error: "Organization membership validation failed" }, 502);
+    const memberships = await membershipResponse.json();
+    if (!Array.isArray(memberships) || memberships.length !== 1
+        || !["owner", "admin", "release_manager", "developer"].includes(memberships[0].role)) {
+      return respond({ error: "Your organization role cannot register releases" }, 403);
+    }
+
+    const projectQuery = new URLSearchParams({ select: "id", id: "eq." + projectId, organization_id: "eq." + orgId, limit: "1" });
+    const projectResponse = await fetch(supabaseUrl + "/rest/v1/projects?" + projectQuery.toString(), { headers });
+    if (!projectResponse.ok) return respond({ error: "Project membership validation failed" }, 502);
+    const projects = await projectResponse.json();
+    if (!Array.isArray(projects) || projects.length !== 1) return respond({ error: "Project does not belong to this organization" }, 404);
 
     const keyQuery = new URLSearchParams({
       select: "key_fingerprint,algorithm,public_key_pem,status,valid_from,valid_until",
@@ -115,21 +139,38 @@ Deno.serve(async (request: Request) => {
     const valid = await crypto.subtle.verify({ name: "Ed25519" }, publicKey, signatureBytes, new TextEncoder().encode(canonical(payload)));
     if (!valid) return respond({ error: "Manifest Ed25519 signature verification failed" }, 422);
 
-    const releaseResponse = await fetch(supabaseUrl + "/rest/v1/releases", {
+    const payloadBytes = new TextEncoder().encode(canonical(payload));
+    const manifestDigest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", payloadBytes)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const signatureDigest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", signatureBytes)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+    const registrationResponse = await fetch(supabaseUrl + "/rest/v1/rpc/register_verified_release", {
       method: "POST",
-      headers: { ...headers, "Content-Type": "application/json", Prefer: "return=representation" },
+      headers: { ...serviceHeaders, "Content-Type": "application/json" },
       body: JSON.stringify({
-        organization_id: orgId, project_id: projectId, version: version.trim(),
-        artifact_name: artifactName.trim(), artifact_sha256: artifactSha.toLowerCase(),
-        manifest, status: "draft", created_by: user.id
+        target_org: orgId,
+        target_project: projectId,
+        target_version: version.trim(),
+        target_artifact_name: artifactName.trim(),
+        target_artifact_sha256: artifactSha.toLowerCase(),
+        target_manifest: manifest,
+        target_actor: user.id,
+        target_key_fingerprint: signature.key_id.toLowerCase(),
+        target_manifest_sha256: manifestDigest,
+        target_signature_sha256: signatureDigest
       })
     });
-    const releaseBody = await releaseResponse.json().catch(() => null);
-    if (!releaseResponse.ok) {
-      const message = releaseBody?.message || releaseBody?.details || "Release registration was rejected";
-      return respond({ error: message }, releaseResponse.status >= 400 && releaseResponse.status < 500 ? releaseResponse.status : 502);
+    const registrationBody = await registrationResponse.json().catch(() => null);
+    if (!registrationResponse.ok) {
+      const message = registrationBody?.message || registrationBody?.details || "Trusted release registration failed";
+      return respond({ error: message }, registrationResponse.status >= 400 && registrationResponse.status < 500 ? registrationResponse.status : 502);
     }
-    return respond({ release: Array.isArray(releaseBody) ? releaseBody[0] : releaseBody, signature_verified: true, key_status: "active" }, 201);
+    return respond({
+      release_id: registrationBody?.release_id,
+      signature_verified: true,
+      attestation_created: registrationBody?.attestation_created === true,
+      key_status: "active",
+      verifier_version: "register-release/v2"
+    }, 201);
   } catch {
     return respond({ error: "Release registration could not be completed" }, 503);
   }
