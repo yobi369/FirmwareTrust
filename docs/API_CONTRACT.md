@@ -138,6 +138,22 @@ Authorization: Bearer ft_live_<secret>
 
 Requires `releases:read`. An organization-wide token may omit project_id; a project-restricted token must supply an allowed project. The response contains release metadata only, not private manifests or signing material.
 
+### Ingest an SBOM
+
+```http
+POST /functions/v1/api-gateway/sboms
+Authorization: Bearer ft_live_<secret>
+Content-Type: application/json
+
+{
+  "project_id": "<project-uuid>",
+  "release_id": "<optional-release-uuid>",
+  "document_text": "<CycloneDX JSON or SPDX JSON document>"
+}
+```
+
+Requires `sboms:write`. The gateway binds the organization from the token and forwards to the authenticated SBOM service, which revalidates the token, project scope and creator membership. The ingestion service stores the original document and normalized components, queries OSV.dev and returns explicit complete/partial/unavailable scan status. The JSON document is limited to 5 MB and 20,000 normalized components.
+
 ### Read signing-key registry
 
 ```http
@@ -178,4 +194,4 @@ Requires `releases:write`. The gateway checks the token's organization/project s
 
 Owners/admins create tokens through `POST /rest/v1/rpc/create_api_token` with name, scopes, project IDs and expiry. The raw `ft_live_` secret is returned once; only its SHA-256 hash is stored. Owners/admins can list non-secret metadata through the `api_token_registry` view and revoke tokens through `POST /rest/v1/rpc/revoke_api_token`. The `verify_api_token` RPC is used by the gateway to check scope/project/expiry/revocation and update last-used time.
 
-The gateway currently implements `releases:read`, `releases:write`, `keys:read` and `audit:read`. `sboms:write` remains reserved until the SBOM API route is implemented. Signed-release registration revalidates the token hash and its current scope/expiry/revocation state inside the atomic registration transaction, preventing a token revoked before the transaction from authorizing a new release. Rate limiting, per-token usage dashboards and broader SBOM/audit endpoints remain open.
+The gateway implements `releases:read`, `releases:write`, `keys:read`, `audit:read` and `sboms:write`. Signed-release registration revalidates the token hash and its current scope/expiry/revocation state inside the atomic registration transaction, preventing a token revoked before the transaction from authorizing a new release. Rate limiting, per-token usage dashboards and broader SBOM/audit endpoints remain open.
