@@ -1,6 +1,6 @@
 # Enterprise Delivery Plan
 
-This plan turns the FirmwareTrust feature set into testable delivery gates. Status is deliberately conservative: architecture and API contracts are specified; hosted multi-tenant services are not yet live.
+This plan turns the FirmwareTrust feature set into testable delivery gates. Status is deliberately conservative: the dedicated backend and initial tenant schema are deployed; the first authenticated organization/project/release console is in preview and has not yet passed end-to-end security validation.
 
 ## Workstreams
 
