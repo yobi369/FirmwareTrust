@@ -5,9 +5,10 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 ## Workstreams
 
 ### 1. Identity and organizations
-- Configure a dedicated authentication/database project.
-- Implement organization creation, membership, invitations and project ownership.
-- Add role checks and tenant-isolation RLS policies.
+- [x] Provision a dedicated Supabase project for FirmwareTrust (EU West, quoted $0/month).
+- [x] Deploy initial organization, membership, project, release, key, SBOM, policy, approval, token, webhook and audit schema.
+- [x] Enable tenant RLS and add owner succession, audit append-only and approval separation controls.
+- [ ] Complete auth/session lifecycle, invitation flow and cross-tenant negative integration tests.
 - Test cross-tenant reads/writes, invitation expiry/replay and owner succession.
 
 ### 2. Registry and audit
@@ -64,6 +65,6 @@ A capability is not complete because a screen or endpoint exists. It must have:
 
 ## Current blockers
 
-A dedicated Supabase project does not yet exist for FirmwareTrust. The connected Supabase organization discovered during setup is the user's existing organization `kupgmzealcvhuojopxkw`; it also contains unrelated application databases. Do not reuse those databases. Before provisioning, confirm that FirmwareTrust should have its own project under that organization. The project creation flow will surface any non-zero cost for approval.
+FirmwareTrust now has a dedicated Supabase project (`dyqhzbsfopzejhqwdzgg`) separate from the user's unrelated databases. Its first tenant schema and security hardening migrations are deployed. The Vercel project has the public Supabase URL and publishable key configured; no service-role key is exposed to the browser.
 
-The current Vercel deployment is a static M0 workbench. Hosted organization accounts, registry and API features must not be represented as active until the backend and deployment environment have been provisioned and tested.
+The initial authenticated console is deployed as a preview and supports account sign-in/sign-up, organization creation, project creation and draft release metadata. It still requires end-to-end browser testing, auth configuration review, cross-tenant denial tests and operational validation. Team invitations, key lifecycle APIs, SBOM analysis, policy/approval execution, API tokens, webhooks and enterprise reports are not yet implemented as complete hosted workflows.
