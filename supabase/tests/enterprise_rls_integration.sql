@@ -6,7 +6,8 @@ values
   ('f1000000-0000-4000-8000-000000000001','authenticated','authenticated','ft-test-owner@example.invalid',now(),now()),
   ('f1000000-0000-4000-8000-000000000002','authenticated','authenticated','ft-test-outsider@example.invalid',now(),now()),
   ('f1000000-0000-4000-8000-000000000003','authenticated','authenticated','ft-test-developer@example.invalid',now(),now()),
-  ('f1000000-0000-4000-8000-000000000004','authenticated','authenticated','ft-test-reviewer@example.invalid',now(),now())
+  ('f1000000-0000-4000-8000-000000000004','authenticated','authenticated','ft-test-reviewer@example.invalid',now(),now()),
+  ('f1000000-0000-4000-8000-000000000005','authenticated','authenticated','ft-test-invitee@example.invalid',now(),now())
 on conflict (id) do nothing;
 
 set local role authenticated;
@@ -17,6 +18,10 @@ declare
   outsider_id uuid := 'f1000000-0000-4000-8000-000000000002';
   developer_id uuid := 'f1000000-0000-4000-8000-000000000003';
   reviewer_user_id uuid := 'f1000000-0000-4000-8000-000000000004';
+  invitee_id uuid := 'f1000000-0000-4000-8000-000000000005';
+  invite_token text;
+  invitation_id uuid;
+  invitation_result jsonb;
   raw_a bytea := decode('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f','hex');
   raw_b bytea := decode('202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f','hex');
   raw_c bytea := decode('404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f','hex');
@@ -270,6 +275,67 @@ begin
   org_b := public.create_organization('FirmwareTrust Outsider Org','ft-test-org-outsider-20261114');
   if not exists(select 1 from public.organization_memberships where organization_id=org_b and user_id=outsider_id and role='owner') then
     raise exception 'FAIL: second creator bootstrap failed';
+  end if;
+
+  invitation_result := public.create_organization_invitation(org_a,'ft-test-invitee@example.invalid','viewer',7);
+  invite_token := invitation_result->>'token';
+  invitation_id := (invitation_result->>'invitation_id')::uuid;
+  if length(invite_token)<>64 or not exists(
+    select 1 from public.organization_invitations i
+    where i.id=invitation_id and i.token_hash=encode(extensions.digest(invite_token,'sha256'),'hex')
+      and i.token_hash<>invite_token and i.email='ft-test-invitee@example.invalid' and i.role='viewer'
+  ) then
+    raise exception 'FAIL: invitation token was not securely hashed or role/email were not persisted';
+  end if;
+  if not exists(select 1 from public.audit_events where organization_id=org_a and action='organization.invitation.created' and resource_id=invitation_id::text) then
+    raise exception 'FAIL: invitation creation was not audited';
+  end if;
+  begin
+    perform public.create_organization_invitation(org_a,'ft-test-invitee@example.invalid','developer',7);
+    raise exception 'FAIL: duplicate pending invitation was accepted';
+  exception when unique_violation then null;
+  end;
+
+  perform set_config('request.jwt.claim.sub',reviewer_user_id::text,true);
+  begin
+    perform public.create_organization_invitation(org_a,'unauthorized@example.invalid','developer',7);
+    raise exception 'FAIL: security analyst created an organization invitation';
+  exception when insufficient_privilege then null;
+  end;
+
+  perform set_config('request.jwt.claim.sub',developer_id::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',developer_id::text,'email','ft-test-developer@example.invalid')::text,true);
+  begin
+    perform public.accept_organization_invitation(invite_token);
+    raise exception 'FAIL: invitation was accepted by an account with the wrong email';
+  exception when insufficient_privilege then null;
+  end;
+
+  perform set_config('request.jwt.claim.sub',invitee_id::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',invitee_id::text,'email','ft-test-invitee@example.invalid')::text,true);
+  perform public.accept_organization_invitation(invite_token);
+  if not exists(select 1 from public.organization_memberships where organization_id=org_a and user_id=invitee_id and role='viewer') then
+    raise exception 'FAIL: invitation acceptance did not create the intended membership role';
+  end if;
+  if not exists(select 1 from public.organization_invitations where id=invitation_id and accepted_at is not null and accepted_by=invitee_id) then
+    raise exception 'FAIL: invitation acceptance was not recorded';
+  end if;
+  if not exists(select 1 from public.audit_events where organization_id=org_a and action='organization.invitation.accepted' and resource_id=invitation_id::text) then
+    raise exception 'FAIL: invitation acceptance was not audited';
+  end if;
+  begin
+    perform public.accept_organization_invitation(invite_token);
+    raise exception 'FAIL: invitation token was reused after acceptance';
+  exception when unique_violation then null;
+  end;
+
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner_id::text,'email','ft-test-owner@example.invalid')::text,true);
+  invitation_result := public.create_organization_invitation(org_a,'ft-test-revoked@example.invalid','developer',7);
+  invitation_id := (invitation_result->>'invitation_id')::uuid;
+  perform public.revoke_organization_invitation(invitation_id);
+  if not exists(select 1 from public.organization_invitations where id=invitation_id and revoked_at is not null) then
+    raise exception 'FAIL: invitation revocation was not persisted';
   end if;
 
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
