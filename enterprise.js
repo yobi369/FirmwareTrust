@@ -46,8 +46,10 @@
   }
   async function fingerprintForPem(pem){
     const der=publicKeyDer(pem);
-    const digest=await crypto.subtle.digest("SHA-256",der);
-    return "SHA256:"+Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
+    const publicKey=await crypto.subtle.importKey("spki",der,{name:"Ed25519"},true,["verify"]);
+    const raw=new Uint8Array(await crypto.subtle.exportKey("raw",publicKey));
+    const digest=await crypto.subtle.digest("SHA-256",raw);
+    return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("").slice(0,16);
   }
   async function updateKeyFingerprint(){
     try{$("key-fingerprint").value=await fingerprintForPem($("key-pem").value.trim());}
