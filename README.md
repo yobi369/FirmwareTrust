@@ -4,6 +4,8 @@
 
 **Live product workbench:** https://firmwaretrust.vercel.app
 
+**Enterprise console preview:** available on the active `feature/enterprise-platform-foundation` Vercel preview deployment. The first preview includes authentication, organization creation, project workspaces and draft release metadata; it is not yet a production enterprise service.
+
 The public web workbench runs cryptographic operations locally in the browser: Ed25519 identity generation, passphrase-encrypted private-key vault export, SHA-256 firmware hashing, signed JSON manifest generation, independent public-key verification and an in-memory tamper-detection demonstration. Firmware files and keys are not uploaded to a FirmwareTrust backend.
 
 
@@ -11,7 +13,7 @@ The public web workbench runs cryptographic operations locally in the browser: E
 
 FirmwareTrust is a software-first engineering project for producing verifiable firmware release artifacts and auditable metadata.
 
-> **Development status: M0 prototype.** This milestone is a host-side signing and verification tool. It is not a hardware secure-boot implementation, device key-provisioning system, OTA updater, device-side anti-rollback mechanism, or production key-management service.
+> **Development status: M0 workbench + M1 enterprise foundation in progress.** The host-side signing and verification tool remains the verified public baseline. A dedicated Supabase project and initial tenant schema are deployed, with the first authenticated organization/project/release console in preview; this hosted layer is not yet production-ready. It is not a hardware secure-boot implementation, device key-provisioning system, OTA updater, device-side anti-rollback mechanism, or production key-management service.
 
 ## M0 capabilities
 

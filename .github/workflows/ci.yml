@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/enterprise-platform-foundation]
   pull_request:
   workflow_dispatch:
 
@@ -29,7 +29,19 @@ jobs:
         run: pytest --cov=firmwaretrust --cov-report=term-missing
       - name: Validate browser application syntax
         if: matrix.python-version == '3.13'
-        run: node --check app.js
+        run: node --check app.js && node --check enterprise.js && node --check api/config.js
       - name: Lint
         if: matrix.python-version == '3.13'
         run: ruff check .
+
+  edge-function-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Test SBOM, Ed25519 and API token validation
+        run: deno test supabase/functions/ingest-sbom/sbom_test.ts supabase/functions/register-release/verification_test.ts supabase/functions/_shared/api_tokens_test.ts
+      - name: Type-check Supabase Edge Functions
+        run: deno check supabase/functions/key-status/index.ts supabase/functions/register-release/index.ts supabase/functions/api-gateway/index.ts supabase/functions/ingest-sbom/index.ts

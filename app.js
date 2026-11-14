@@ -76,13 +76,31 @@ async function signRelease(){
   const proof=new Uint8Array(await crypto.subtle.sign({name:"Ed25519"},privateKey,challenge));
   if(!await crypto.subtle.verify({name:"Ed25519"},publicKey,proof,challenge))throw new Error("The private key does not match the public key stored in this vault.");
   const fileBytes=new Uint8Array(await firmware.arrayBuffer()), hash=hex(await digest(fileBytes));
+  const orgId=$("sign-org-id").value.trim(), projectId=$("sign-project-id").value.trim();
+  if(Boolean(orgId)!==Boolean(projectId))throw new Error("Enter both organization and project IDs to bind this release to the online trust registry.");
+  const uuidPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if(orgId&&(!uuidPattern.test(orgId)||!uuidPattern.test(projectId)))throw new Error("Organization and project IDs must be valid UUIDs.");
   const payload={schema_version:"1.0",artifact:{filename:firmware.name,size_bytes:fileBytes.length,digest_algorithm:"sha256",digest:hash},signature:{algorithm:"Ed25519",key_id:id},created_at:new Date().toISOString().replace(/\.\d{3}Z$/,"Z")};
+  if(orgId)payload.trust_registry={provider:"firmwaretrust",organization_id:orgId,project_id:projectId};
   const signature=new Uint8Array(await crypto.subtle.sign({name:"Ed25519"},privateKey,enc.encode(canonical(payload))));
   const manifest={...payload,signature:{...payload.signature,value:bytesToB64(signature)}};
   const name=firmware.name+".manifest.json";
   download(name,JSON.stringify(manifest,null,2)+"\n","application/json");
   show("sign-result",`<h4>Release manifest signed</h4><p>Artifact: <b>${escapeHtml(firmware.name)}</b> · ${fileBytes.length.toLocaleString()} bytes</p><p>SHA-256: <code>${hash}</code></p><p>Signer key ID: <code>${id}</code></p><p>Manifest downloaded: <b>${escapeHtml(name)}</b>. Keep it with the exact firmware artifact and distribute the public key through a separate trusted channel.</p>`);
  }catch(e){fail("sign-result",e)}finally{$("sign-pass").value="";setBusy(btn,false,"Create signed release manifest")}
+}
+async function checkOnlineKeyStatus(context,keyId){
+ if(!context||context.provider!=="firmwaretrust"||typeof context.organization_id!=="string"||typeof context.project_id!=="string")throw new Error("Manifest trust-registry context is malformed.");
+ const uuidPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+ if(!uuidPattern.test(context.organization_id)||!uuidPattern.test(context.project_id))throw new Error("Manifest trust-registry identifiers are invalid.");
+ const configResponse=await fetch("/api/config",{cache:"no-store"});
+ if(!configResponse.ok)throw new Error("The manifest requires an online registry check, but registry configuration is unavailable.");
+ const config=await configResponse.json();
+ const response=await fetch(config.url+"/functions/v1/key-status",{method:"POST",headers:{apikey:config.publishableKey,"Content-Type":"application/json"},body:JSON.stringify({organization_id:context.organization_id,project_id:context.project_id,key_id:keyId})});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(data.error||("Online registry check failed ("+response.status+")."));
+ if(data.trusted!==true)throw new Error("Signing key is not trusted by the named registry. Registry status: "+String(data.status||"unknown")+".");
+ return data;
 }
 async function verifyRelease(){
  const btn=$("verify-release");setBusy(btn,true,"Verifying…");$("tamper-test").disabled=true;
@@ -103,9 +121,10 @@ async function verifyRelease(){
   const signature=b64ToBytes(manifest.signature.value);
   const valid=await crypto.subtle.verify({name:"Ed25519"},publicKey,signature,enc.encode(canonical(payload)));
   if(!valid)throw new Error("Signature verification FAILED: signed manifest data is invalid or has been altered.");
+  const registryStatus=manifest.trust_registry?await checkOnlineKeyStatus(manifest.trust_registry,id):null;
   window.lastVerified={fileBytes,manifest,publicKey};
   $("tamper-test").disabled=false;
-  show("verify-result",`<h4>✓ Release verified successfully</h4><p>Signature: <b>VALID</b> · Artifact integrity: <b>MATCH</b> · Trust anchor: <b>MATCH</b></p><p>Artifact: ${escapeHtml(firmware.name)} · ${fileBytes.length.toLocaleString()} bytes</p><p>SHA-256: <code>${actualHash}</code></p><p>Signer key ID: <code>${id}</code></p><p>This verifies the cryptographic relationship between this artifact, manifest and supplied key. It does not certify the firmware as safe or authorize the signer.</p>`);
+  show("verify-result",`<h4>✓ Release verified successfully</h4><p>Signature: <b>VALID</b> · Artifact integrity: <b>MATCH</b> · Trust anchor: <b>MATCH</b></p><p>Artifact: ${escapeHtml(firmware.name)} · ${fileBytes.length.toLocaleString()} bytes</p><p>SHA-256: <code>${actualHash}</code></p><p>Signer key ID: <code>${id}</code></p><p>This verifies the cryptographic relationship between this artifact, manifest and supplied key. ${registryStatus?`Online registry: <b>ACTIVE</b> · checked ${escapeHtml(registryStatus.checked_at||"just now")}.`:`Registry status was not checked: this is offline verification only and cannot detect later key rotation or revocation. Check the <a href="/enterprise.html">Enterprise Console</a> before relying on signer trust.`}</p>`);
   $("tamper-result").classList.add("hidden");
  }catch(e){fail("verify-result",e)}finally{setBusy(btn,false,"Verify release")}
 }

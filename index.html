@@ -13,7 +13,7 @@
 <body>
 <header class="topbar">
   <a class="brand" href="/" aria-label="FirmwareTrust home"><span class="brandmark">F</span><span>FIRMWARE<span class="accent">TRUST</span></span></a>
-  <nav><a href="#workbench">Workbench</a><a href="#how">How it works</a><a href="#boundaries">Security model</a><a href="https://github.com/yobi369/FirmwareTrust" target="_blank" rel="noreferrer">Source ↗</a></nav>
+  <nav><a href="#workbench">Workbench</a><a href="#how">How it works</a><a href="#boundaries">Security model</a><a href="/enterprise.html">Enterprise console</a><a href="https://github.com/yobi369/FirmwareTrust" target="_blank" rel="noreferrer">Source ↗</a></nav>
   <span class="local-pill"><i></i> LOCAL PROCESSING</span>
 </header>
 <main>
@@ -51,6 +51,9 @@
       <label class="field full">Firmware artifact <input id="sign-firmware" type="file"><small>The selected file is read locally and is never uploaded.</small></label>
       <label class="field full">Encrypted private-key vault (.ftkey) <input id="sign-vault" type="file" accept=".ftkey,.json,application/json"></label>
       <label class="field full">Vault passphrase <input id="sign-pass" type="password" autocomplete="off" placeholder="Unlock your encrypted private key"></label>
+      <label class="field">Registry organization ID (optional) <input id="sign-org-id" type="text" autocomplete="off" placeholder="UUID from Enterprise Console"></label>
+      <label class="field">Registry project ID (optional) <input id="sign-project-id" type="text" autocomplete="off" placeholder="UUID from Enterprise Console"></label>
+      <p class="hint full">Enter both IDs to bind the registry scope into the signed manifest. Verification will then require a live key-status check; without them, the manifest remains offline-only.</p>
     </div>
     <div class="actions"><button class="btn primary" id="sign-release">Create signed release manifest</button><span class="hint" id="sign-hint"></span></div>
     <div class="result hidden" id="sign-result" aria-live="polite"></div>
@@ -62,7 +65,7 @@
       <label class="field full">Signed manifest (.json) <input id="verify-manifest" type="file" accept=".json,application/json"></label>
       <label class="field full">Trusted public key (.pem) <input id="verify-public" type="file" accept=".pem,.pub,text/plain"></label>
     </div>
-    <div class="actions"><button class="btn primary" id="verify-release">Verify release</button><button class="btn ghost" id="load-demo">Load sample release</button><button class="btn ghost" id="tamper-test" disabled>Run tamper-detection test</button></div><p class="hint">New here? Load a self-contained sample release generated with a temporary in-memory key, then verify it and run the tamper test.</p>
+    <div class="actions"><button class="btn primary" id="verify-release">Verify release</button><button class="btn ghost" id="load-demo">Load sample release</button><button class="btn ghost" id="tamper-test" disabled>Run tamper-detection test</button></div><p class="hint">A manifest with a FirmwareTrust registry scope requires a live key-status check. Verification fails closed if the key is rotated, revoked, expired or not registered. Older manifests remain offline-verifiable but do not establish current registry trust.</p><p class="hint">New here? Load a self-contained sample release generated with a temporary in-memory key, then verify it and run the tamper test.</p>
     <div class="result hidden" id="verify-result" aria-live="polite"></div>
     <div class="result hidden" id="tamper-result" aria-live="polite"></div>
   </section>
