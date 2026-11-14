@@ -34,7 +34,7 @@ Request body:
 }
 ```
 
-The endpoint returns only a minimal status result. It does not return organization names, member data, public-key PEM, revocation reasons, audit events or other tenant records. It reads through a server-side Supabase secret key held by the Edge Function runtime; no secret key is included in browser code.
+The endpoint returns only a minimal status result. It does not return organization names, member data, public-key PEM, revocation reasons, audit events or other tenant records. It reads through the server-side Supabase secret key exposed to Edge Functions as SUPABASE_SECRET_KEYS; only register-release uses this privileged credential for the atomic trusted-registration RPC. The key is never included in browser code, manifests, logs or repository files.
 
 Possible statuses include `active`, `rotated`, `revoked`, `expired`, `not_yet_valid`, `not_registered`, `unsupported_algorithm` and `ambiguous`.
 
