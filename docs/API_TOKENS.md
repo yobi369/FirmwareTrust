@@ -2,11 +2,14 @@
 
 ## Current supported capability
 
-FirmwareTrust currently supports organization-issued API tokens for authenticated signed-release registration. The only active token scope is:
+FirmwareTrust supports organization-issued API tokens through the deployed `api-gateway` Edge Function. The currently active scopes are:
 
-- `releases:write` — register a signed firmware release through the `register-release` Edge Function.
+- `releases:write` — register a signed firmware release.
+- `releases:read` — read release metadata.
+- `keys:read` — read public signing-key lifecycle metadata.
+- `audit:read` — read organization audit events, optionally filtered to an allowed project.
 
-Other planned scopes (release read, SBOM write, key read and audit read) are not enabled until their corresponding API endpoints and tests exist.
+`sboms:write` remains reserved until an API-token-authenticated SBOM route is implemented.
 
 ## Issuance and storage
 
@@ -24,19 +27,19 @@ The database denies direct authenticated inserts and updates, withholds the stor
 
 ## Release registration
 
-Use the same signed-release registration endpoint as a user session:
+Use the API gateway signed-release route:
 
 ```http
-POST /functions/v1/register-release
+POST /functions/v1/api-gateway/releases
 Authorization: Bearer ft_live_<secret>
 Content-Type: application/json
 ```
 
-The JSON body is the same as the authenticated release-registration contract: organization ID, project ID, version, artifact filename, SHA-256 digest and signed FirmwareTrust manifest.
+The JSON body contains project ID, version, artifact filename, SHA-256 digest and signed FirmwareTrust manifest. The organization is derived from the validated API token; the client cannot select another tenant.
 
-The Edge Function hashes the presented token, looks up the matching credential using its server-only Supabase secret, and checks organization, project, `releases:write` scope, expiry, revocation and the token creator's current membership/role. It then verifies the active Ed25519 signing key and manifest signature.
+The gateway verifies the presented token through the restricted `verify_api_token` RPC, then checks organization, project, scope, expiry, revocation and the token creator's current membership/role. It then verifies the active Ed25519 signing key and manifest signature.
 
-The database rechecks the token digest, organization, project scope, scope grant, expiry, revocation and actor identity inside the same transaction that creates the release and its immutable verification attestation. A row lock serializes registration with revocation so a token revoked first cannot be used to register a release.
+The gateway hashes the presented token and the database rechecks that digest, organization, project scope, `releases:write` grant, expiry, revocation and actor identity inside the same transaction that creates the release and its immutable verification attestation. A row lock serializes registration with revocation so a token revoked first cannot be used to register a release.
 
 ## Operational handling
 
@@ -49,6 +52,6 @@ The database rechecks the token digest, organization, project scope, scope grant
 
 ## Current limitations
 
-- The token endpoint currently supports only signed release registration; metadata-only release creation is not exposed through API tokens.
-- SBOM ingestion, read-only release queries, key-status reads and audit exports do not yet accept API tokens.
+- API-token release registration requires a registry-scoped Ed25519-signed manifest; metadata-only release creation is not exposed through API tokens.
+- SBOM ingestion remains unavailable through API tokens.
 - Rate limiting, token usage analytics, rotation automation and live CI-provider end-to-end tests remain production hardening tasks.
