@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/yobi369/FirmwareTrust/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yobi369/FirmwareTrust/actions/workflows/ci.yml) [![Live showcase](https://img.shields.io/badge/showcase-live-0f9d8a)](https://firmwaretrust.vercel.app)
 
-**Public product showcase:** https://firmwaretrust.vercel.app
+**Live product workbench:** https://firmwaretrust.vercel.app
+
+The public web workbench runs cryptographic operations locally in the browser: Ed25519 identity generation, passphrase-encrypted private-key vault export, SHA-256 firmware hashing, signed JSON manifest generation, independent public-key verification and an in-memory tamper-detection demonstration. Firmware files and keys are not uploaded to a FirmwareTrust backend.
 
 
 **Firmware integrity, signing and release verification.**
@@ -12,6 +14,12 @@ FirmwareTrust is a software-first engineering project for producing verifiable f
 > **Development status: M0 prototype.** This milestone is a host-side signing and verification tool. It is not a hardware secure-boot implementation, device key-provisioning system, OTA updater, device-side anti-rollback mechanism, or production key-management service.
 
 ## M0 capabilities
+
+### Browser product
+
+Open the [live FirmwareTrust workbench](https://firmwaretrust.vercel.app) over HTTPS. Generate an Ed25519 identity, export the encrypted `.ftkey` vault and public PEM, sign a selected firmware artifact, then verify the resulting manifest with the public key. The tamper test modifies only an in-memory copy. The browser app requires a modern browser with Web Crypto Ed25519 support. It is a local demonstration workflow, not a hosted key-management or release-registry service.
+
+
 
 - Generate Ed25519 signing key pairs.
 - Calculate SHA-256 digests and artifact sizes.
