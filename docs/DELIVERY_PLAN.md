@@ -74,12 +74,12 @@ This plan tracks implementation and validation of FirmwareTrust's commercial con
 
 - Dedicated Supabase project: `dyqhzbsfopzejhqwdzgg`.
 - Applied database migrations: **001–042**.
-- Edge Functions: `key-status` v2, `register-release` v6, `ingest-sbom` v10 and `api-gateway` v5.
+- Edge Functions: `key-status` v2, `register-release` v7, `ingest-sbom` v11 and `api-gateway` v6.
 - Supabase security advisor: zero findings after the latest schema changes.
 - Performance advisor: no remaining missing-FK-index or overlapping permissive RLS warnings. Remaining unused-index notices are informational and should be reassessed after representative workload data exists.
 - The authenticated SQL integration suite passed against the dedicated project after release governance, verification attestations, invitations and API-token changes. It covers tenant isolation, role restrictions, invitation token hashing/email binding/acceptance/revocation/audit, attestation forgery denial, policy-gated approval/publication, API-token scope/project/expiry/revocation and API-token SBOM ingestion. Fixtures roll back.
 - Latest Deno test/type-check run passed the SBOM, Ed25519 and API-token suites and type-checked the Edge Functions, including the API gateway and SBOM API-token path.
-- GitHub Actions CI run #354 passed across Python 3.11/3.12/3.13, browser syntax/lint, Deno SBOM/Ed25519/API-token tests and Edge Function type checks.
+- GitHub Actions CI run #370 passed across Python 3.11/3.12/3.13, browser syntax/lint, Deno SBOM/Ed25519/API-token tests and Edge Function type checks.
 
 ## Release gates
 
