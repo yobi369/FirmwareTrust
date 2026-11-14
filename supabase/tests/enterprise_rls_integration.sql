@@ -37,6 +37,7 @@ declare
   key_a uuid;
   key_b uuid;
   n integer;
+  approval_result jsonb;
 begin
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   org_a := public.create_organization('FirmwareTrust Test Org','ft-test-org-rls-20261114');
@@ -170,9 +171,9 @@ begin
   end if;
   perform public.request_release_approval(release_b);
   perform set_config('request.jwt.claim.sub',reviewer_user_id::text,true);
-  perform public.submit_release_approval(release_b,'approved','Independent approval for complete verified release evidence');
+  approval_result := public.submit_release_approval(release_b,'approved','Independent approval for complete verified release evidence');
   if not exists(select 1 from public.releases where id=release_b and status='approved') then
-    raise exception 'FAIL: complete verified release did not advance to approved';
+    raise exception 'FAIL: complete verified release did not advance to approved; evaluation=%',approval_result::text;
   end if;
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform public.publish_release(release_b);
