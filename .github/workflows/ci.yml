@@ -27,6 +27,9 @@ jobs:
           python -m pip install -e ".[dev]"
       - name: Run tests
         run: pytest --cov=firmwaretrust --cov-report=term-missing
+      - name: Validate browser application syntax
+        if: matrix.python-version == '3.13'
+        run: node --check app.js
       - name: Lint
         if: matrix.python-version == '3.13'
         run: ruff check .
