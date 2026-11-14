@@ -99,11 +99,11 @@ def sign_firmware(
 ) -> dict[str, Any]:
     if not firmware_path.is_file():
         raise FirmwareTrustError(f"Firmware file does not exist: {firmware_path}")
-    if manifest_path.exists():
-        raise FirmwareTrustError(f"Refusing to overwrite manifest: {manifest_path}")
     protected_paths = {firmware_path.resolve(), private_key_path.resolve()}
     if manifest_path.resolve() in protected_paths:
         raise FirmwareTrustError("Manifest path must not overwrite firmware or the private key.")
+    if manifest_path.exists():
+        raise FirmwareTrustError(f"Refusing to overwrite manifest: {manifest_path}")
     private_key = load_private_key(private_key_path)
     public_key = private_key.public_key()
     digest, size = sha256_file(firmware_path)
