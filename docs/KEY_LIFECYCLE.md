@@ -15,6 +15,7 @@ FirmwareTrust registers public verification material only. Customer signing priv
 - RLS scopes all reads and writes to organization membership and the key-management role.
 - Security-definer membership and audit helpers live in a non-exposed `private` schema; public RPCs for organization creation and key lifecycle use SECURITY INVOKER.
 - A partial unique index prevents duplicate active fingerprints within an organization/project scope.
+- The INSERT trigger accepts only Ed25519 SubjectPublicKeyInfo PEM (the Ed25519 OID and 32-byte raw public key), recomputes the M0-compatible fingerprint from the raw key bytes, and rejects mismatches and private-key PEMs even when a caller bypasses the browser UI.
 - The lifecycle trigger prevents public material, fingerprint, algorithm, ownership and scope from being changed after registration.
 - Only active keys may transition to rotated, revoked or expired.
 - Key rows cannot be deleted.
@@ -34,4 +35,4 @@ Both RPC functions run as SECURITY INVOKER, require a signed-in user and verify 
 
 ## Remaining verification
 
-Before marking this capability production-ready, add authenticated integration tests for successful registration/rotation/revocation, unauthorized-role denial, cross-tenant denial, duplicate fingerprint rejection, immutable-field rejection, delete rejection, transaction rollback, and audit-chain continuity. Also validate that the firmware verification path treats revoked keys as untrusted while preserving historical verification records.
+Before marking this capability production-ready, complete browser end-to-end tests for successful registration/rotation/revocation and verify that the online verifier treats rotated, revoked, expired, missing and unavailable registry states as untrusted while preserving historical cryptographic verification records. Independent security review and an incident-response runbook are also required.
