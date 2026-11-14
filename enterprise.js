@@ -68,6 +68,7 @@
     catch{ $("invite-link").focus();$("invite-link").select();message("invite-result","Select and copy the invitation link manually.");}
   }
   async function revokeInvitation(invitationId){
+    if(!window.confirm("Revoke this organization invitation? The invite link will stop working."))return;
     try{await request("/rest/v1/rpc/revoke_organization_invitation",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target_invitation:invitationId})});message("invite-result","Invitation revoked.");await loadInvitations();}
     catch(e){message("invite-result",e.message,true)}
   }
@@ -127,6 +128,7 @@
     catch{$("api-token-secret").focus();$("api-token-secret").select();message("api-token-result","Select and copy the token manually, then store it securely.");}
   }
   async function revokeApiToken(tokenId){
+    if(!window.confirm("Revoke this API token? Existing integrations using it will immediately lose access. This cannot be undone."))return;
     try{await request("/rest/v1/rpc/revoke_api_token",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target_org:state.organization.id,target_token_id:tokenId})});message("api-token-result","API token revoked. Revocation is irreversible.");await loadApiTokens();}
     catch(e){message("api-token-result",e.message,true)}
   }
