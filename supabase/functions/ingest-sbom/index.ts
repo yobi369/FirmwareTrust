@@ -129,6 +129,8 @@ Deno.serve(async (request: Request) => {
     const osvResponse = await fetch("https://api.osv.dev/v1/querybatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ queries }) });
     if (!osvResponse.ok) return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "unavailable", scan_source: "OSV.dev" }, 201);
     const batch = await osvResponse.json();
+    if (!Array.isArray(batch.results) || batch.results.length !== boundedCandidates.length) return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "partial", scan_source: "OSV.dev", warning: "OSV returned an incomplete batch response" }, 201);
+    const querybatchHasMore = batch.results.some((result: any) => Boolean(result.next_page_token));
     const vulnerabilityComponents = new Map<string, Set<string>>();
     for (let index=0; index<boundedCandidates.length; index++) {
       const component = boundedCandidates[index];
@@ -140,7 +142,9 @@ Deno.serve(async (request: Request) => {
         vulnerabilityComponents.get(vuln.id)!.add(componentId);
       }
     }
-    const vulnerabilityIds = Array.from(vulnerabilityComponents.keys()).slice(0,500);
+    const allVulnerabilityIds = Array.from(vulnerabilityComponents.keys());
+    const advisoriesTruncated = allVulnerabilityIds.length > 500;
+    const vulnerabilityIds = allVulnerabilityIds.slice(0,500);
     const findings: any[] = [];
     let detailFailures = 0;
     await mapLimit(vulnerabilityIds,6,async (id) => {
@@ -159,7 +163,7 @@ Deno.serve(async (request: Request) => {
         inserted += Math.min(500,findings.length-offset);
       }
     }
-    const partial = candidates.length > boundedCandidates.length || detailFailures > 0;
-    return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: inserted, scan_status: partial ? "partial" : "complete", scan_source: "OSV.dev", advisory_details_failed: detailFailures }, 201);
+    const partial = candidates.length > boundedCandidates.length || detailFailures > 0 || querybatchHasMore || advisoriesTruncated;
+    return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: inserted, scan_status: partial ? "partial" : "complete", scan_source: "OSV.dev", advisory_details_failed: detailFailures, advisories_truncated: advisoriesTruncated, pagination_pending: querybatchHasMore }, 201);
   } catch { return respond({ error: "SBOM ingestion or vulnerability enrichment could not be completed" }, 503); }
 });
