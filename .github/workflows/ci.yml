@@ -41,7 +41,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Test SBOM normalization and OSV mapping
+      - name: Test SBOM, Ed25519 and API token validation
         run: deno test supabase/functions/ingest-sbom/sbom_test.ts supabase/functions/register-release/verification_test.ts supabase/functions/_shared/api_tokens_test.ts
       - name: Type-check Supabase Edge Functions
-        run: deno check supabase/functions/key-status/index.ts supabase/functions/register-release/index.ts supabase/functions/api-gateway/index.ts supabase/functions/ingest-sbom/index.ts supabase/functions/api-gateway/index.ts
+        run: deno check supabase/functions/key-status/index.ts supabase/functions/register-release/index.ts supabase/functions/api-gateway/index.ts supabase/functions/ingest-sbom/index.ts
