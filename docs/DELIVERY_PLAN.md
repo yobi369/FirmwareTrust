@@ -18,10 +18,11 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 - Test idempotency, concurrent submissions and audit-chain integrity.
 
 ### 3. Key lifecycle
-- Register public keys and fingerprints.
-- Implement rotation, predecessor/successor relationships and revocation.
-- Preserve historical signature evidence while surfacing current trust status.
-- Test compromised-key response, clock boundaries and transition verification.
+- [x] Register public keys and SHA-256 fingerprints; keep private keys customer-controlled.
+- [x] Implement atomic rotation, predecessor/successor relationships and irreversible revocation with reasons.
+- [x] Preserve historical public-key evidence and append audit events for rotation/revocation.
+- [ ] Add authenticated integration tests for compromised-key response, role denial, cross-tenant denial, duplicate fingerprints, immutable fields and transaction rollback.
+- [ ] Connect key revocation status to every release verification path.
 
 ### 4. SBOM and vulnerability intelligence
 - Parse CycloneDX JSON and SPDX JSON.
