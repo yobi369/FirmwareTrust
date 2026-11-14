@@ -38,7 +38,8 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 - [x] Integrate OSV.dev querybatch and hydrate advisory details; persist findings per affected component with source modification timestamps.
 - [x] Persist scan status, scan source/time, checked-component count, finding count and partial-scan warnings on each SBOM record.
 - [x] Surface SBOM inventory and recent vulnerability findings in the Enterprise Console.
-- [ ] Implement OSV pagination continuation, scheduled rescans, freshness alerts, triage, false-positive exceptions and exception expiry.
+- [x] Follow OSV querybatch page tokens for up to five bounded continuation rounds; persist partial status if additional pages remain.
+- [ ] Add scheduled rescans, freshness alerts, triage, false-positive exceptions and exception expiry.
 - [ ] Add Edge Function tests for malformed documents, duplicate components, unmatched PURLs, OSV partial/unavailable states and cross-tenant denial.
 
 ### 5. Governance and reporting
