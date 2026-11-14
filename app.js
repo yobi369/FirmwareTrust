@@ -105,7 +105,7 @@ async function verifyRelease(){
   if(!valid)throw new Error("Signature verification FAILED: signed manifest data is invalid or has been altered.");
   window.lastVerified={fileBytes,manifest,publicKey};
   $("tamper-test").disabled=false;
-  show("verify-result",`<h4>✓ Release verified successfully</h4><p>Signature: <b>VALID</b> · Artifact integrity: <b>MATCH</b> · Trust anchor: <b>MATCH</b></p><p>Artifact: ${escapeHtml(firmware.name)} · ${fileBytes.length.toLocaleString()} bytes</p><p>SHA-256: <code>${actualHash}</code></p><p>Signer key ID: <code>${id}</code></p><p>This verifies the cryptographic relationship between this artifact, manifest and supplied key. It does not certify the firmware as safe or authorize the signer.</p>`);
+  show("verify-result",`<h4>✓ Release verified successfully</h4><p>Signature: <b>VALID</b> · Artifact integrity: <b>MATCH</b> · Trust anchor: <b>MATCH</b></p><p>Artifact: ${escapeHtml(firmware.name)} · ${fileBytes.length.toLocaleString()} bytes</p><p>SHA-256: <code>${actualHash}</code></p><p>Signer key ID: <code>${id}</code></p><p>This verifies the cryptographic relationship between this artifact, manifest and supplied key. Current registry status was not checked: this offline verifier does not query whether the key has since been rotated or revoked. Check the organization's <a href="/enterprise.html">Enterprise Console</a> before relying on signer trust. This does not certify the firmware as safe.</p>`);
   $("tamper-result").classList.add("hidden");
  }catch(e){fail("verify-result",e)}finally{setBusy(btn,false,"Verify release")}
 }
