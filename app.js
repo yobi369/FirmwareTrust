@@ -109,6 +109,26 @@ async function verifyRelease(){
   $("tamper-result").classList.add("hidden");
  }catch(e){fail("verify-result",e)}finally{setBusy(btn,false,"Verify release")}
 }
+async function loadDemoRelease(){
+ const btn=$("load-demo");setBusy(btn,true,"Preparing sample…");
+ try{
+  if(!crypto?.subtle)throw new Error("Web Crypto is unavailable in this browser.");
+  const pair=await crypto.subtle.generateKey({name:"Ed25519"},true,["sign","verify"]);
+  const publicSpki=new Uint8Array(await crypto.subtle.exportKey("spki",pair.publicKey));
+  const raw=new Uint8Array(await crypto.subtle.exportKey("raw",pair.publicKey));
+  const artifactBytes=enc.encode("FIRMWARETRUST SAMPLE ARTIFACT\\nproduct=demo-controller\\nversion=0.1.0\\nbuild=investor-preview\\nThis is synthetic demonstration data, not deployable device firmware.\\n");
+  const hash=hex(await digest(artifactBytes)), id=await keyId(raw);
+  const payload={schema_version:"1.0",artifact:{filename:"firmwaretrust-demo-v0.1.0.bin",size_bytes:artifactBytes.length,digest_algorithm:"sha256",digest:hash},signature:{algorithm:"Ed25519",key_id:id},created_at:new Date().toISOString().replace(/\\.\\d{3}Z$/,"Z")};
+  const signature=new Uint8Array(await crypto.subtle.sign({name:"Ed25519"},pair.privateKey,enc.encode(canonical(payload))));
+  const manifest={...payload,signature:{...payload.signature,value:bytesToB64(signature)}};
+  const assign=(input,file)=>{const dt=new DataTransfer();dt.items.add(file);input.files=dt.files;};
+  assign($("verify-firmware"),new File([artifactBytes],payload.artifact.filename,{type:"application/octet-stream"}));
+  assign($("verify-manifest"),new File([JSON.stringify(manifest,null,2)],"firmwaretrust-demo.manifest.json",{type:"application/json"}));
+  assign($("verify-public"),new File([pem("PUBLIC KEY",publicSpki)],"firmwaretrust-demo-public.pem",{type:"application/x-pem-file"}));
+  $("verify-result").classList.add("hidden");$("tamper-result").classList.add("hidden");$("tamper-test").disabled=true;
+  show("verify-result","<h4>Sample release loaded</h4><p>A temporary Ed25519 identity signed a synthetic firmware artifact in memory. No private key was exported or retained. Select <b>Verify release</b> to validate the sample, then run the tamper test.</p>");
+ }catch(e){fail("verify-result",e)}finally{setBusy(btn,false,"Load sample release")}
+}
 async function tamperTest(){
  try{
   if(!window.lastVerified)throw new Error("Verify a release first.");
@@ -129,5 +149,5 @@ document.querySelectorAll(".step-tab").forEach(btn=>btn.addEventListener("click"
 $("generate-key").addEventListener("click",createIdentity);
 $("sign-release").addEventListener("click",signRelease);
 $("verify-release").addEventListener("click",verifyRelease);
-$("tamper-test").addEventListener("click",tamperTest);
+$("tamper-test").addEventListener("click",tamperTest);\n$("load-demo").addEventListener("click",loadDemoRelease);
 if(!window.isSecureContext||!crypto?.subtle){$("crypto-support").textContent="Secure Web Crypto is unavailable in this browser/context.";}else{$("crypto-support").textContent="Web Crypto available · Ed25519 support will be checked when you generate a key.";}
