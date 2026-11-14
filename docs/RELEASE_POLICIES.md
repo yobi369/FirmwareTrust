@@ -15,7 +15,7 @@ A policy is a JSON object stored in `release_policies.rules`. The current evalua
 | `max_high_findings` | integer ≥ 0 | Block when high-severity findings exceed this limit |
 | `min_approvals` | integer ≥ 0 | Require this many distinct independent approvals for this policy version |
 
-Unknown rule keys and invalid types are rejected. Project-specific policies take precedence over organization-wide policies; within that scope the highest enabled version is selected.
+Unknown rule keys and invalid types are rejected. Project-specific policies take precedence over organization-wide policies. Within the selected scope, the most recently created enabled policy is selected; version numbers are monotonic within each policy name. Once a release enters review, its exact policy row is pinned and cannot be changed.
 
 ## Evaluation API
 
