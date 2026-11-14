@@ -8,8 +8,7 @@ FirmwareTrust supports organization-issued API tokens through the deployed `api-
 - `releases:read` — read release metadata.
 - `keys:read` — read public signing-key lifecycle metadata.
 - `audit:read` — read organization audit events, optionally filtered to an allowed project.
-
-`sboms:write` remains reserved until an API-token-authenticated SBOM route is implemented.
+- `sboms:write` — ingest CycloneDX/SPDX JSON SBOMs and trigger OSV.dev enrichment.
 
 ## Issuance and storage
 
@@ -41,6 +40,24 @@ The gateway verifies the presented token through the restricted `verify_api_toke
 
 The gateway hashes the presented token and the database rechecks that digest, organization, project scope, `releases:write` grant, expiry, revocation and actor identity inside the same transaction that creates the release and its immutable verification attestation. A row lock serializes registration with revocation so a token revoked first cannot be used to register a release.
 
+## SBOM ingestion
+
+Use the API gateway SBOM route:
+
+```http
+POST /functions/v1/api-gateway/sboms
+Authorization: Bearer ft_live_<secret>
+Content-Type: application/json
+
+{
+  "project_id": "<project-uuid>",
+  "release_id": null,
+  "document_text": "<CycloneDX or SPDX JSON document>"
+}
+```
+
+The gateway enforces the `sboms:write` scope and project restriction, then forwards the credential to the SBOM ingestion Edge Function. That function re-verifies the token and the database performs a second token digest/scope/expiry/revocation check inside the same transaction as SBOM persistence and audit insertion. The token creator must remain an authorized organization member.
+
 ## Operational handling
 
 - Store tokens in GitHub Actions Secrets or another CI/CD secret manager.
@@ -53,5 +70,5 @@ The gateway hashes the presented token and the database rechecks that digest, or
 ## Current limitations
 
 - API-token release registration requires a registry-scoped Ed25519-signed manifest; metadata-only release creation is not exposed through API tokens.
-- SBOM ingestion remains unavailable through API tokens.
+- Scheduled SBOM rescans, freshness alerts and vulnerability triage are not yet included in the API-token route.
 - Rate limiting, token usage analytics, rotation automation and live CI-provider end-to-end tests remain production hardening tasks.
