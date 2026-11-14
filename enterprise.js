@@ -31,7 +31,7 @@
     }catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}
   }
   async function createOrganization(){try{const name=$("org-name").value.trim(),slug=slugify($("org-slug").value||name);if(name.length<2||slug.length<2)throw new Error("Enter an organization name and valid slug.");await request("/rest/v1/rpc/create_organization",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({org_name:name,org_slug:slug})});$("org-name").value="";$("org-slug").value="";message("auth-message","Organization created. You are its owner.");await loadOrganizations();}catch(e){message("auth-message",e.message,true)}}
-  async function selectOrganization(id){state.organization=state.organizations.find(org=>org.id===id)||null;if(!state.organization)return;state.project=null;$("project-tools").classList.remove("hidden");$("project-heading").textContent=state.organization.name+" · Projects";$("project-subtitle").textContent="Create and manage projects inside this organization.";["release-tools","key-tools","sbom-tools","policy-tools","team-tools","api-token-tools"].forEach(id=>$(id).classList.add("hidden"));const membership=await request("/rest/v1/organization_memberships?select=role&organization_id=eq."+encodeURIComponent(state.organization.id)+"&user_id=eq."+encodeURIComponent(state.session.user.id)+"&limit=1");state.organizationRole=membership?.[0]?.role||null;if(["owner","admin"].includes(state.organizationRole)){$("team-tools").classList.remove("hidden");$("api-token-tools").classList.remove("hidden");await loadInvitations();}await loadProjects();if(["owner","admin"].includes(state.organizationRole))await loadApiTokens();}
+  async function selectOrganization(id){state.organization=state.organizations.find(org=>org.id===id)||null;if(!state.organization)return;state.project=null;$('api-token-org-wide').checked=false;$('api-token-secret').value='';$('copy-api-token').disabled=true;$("project-tools").classList.remove("hidden");$("project-heading").textContent=state.organization.name+" · Projects";$("project-subtitle").textContent="Create and manage projects inside this organization.";["release-tools","key-tools","sbom-tools","policy-tools","team-tools","api-token-tools"].forEach(id=>$(id).classList.add("hidden"));const membership=await request("/rest/v1/organization_memberships?select=role&organization_id=eq."+encodeURIComponent(state.organization.id)+"&user_id=eq."+encodeURIComponent(state.session.user.id)+"&limit=1");state.organizationRole=membership?.[0]?.role||null;if(["owner","admin"].includes(state.organizationRole)){$("team-tools").classList.remove("hidden");$("api-token-tools").classList.remove("hidden");await loadInvitations();}await loadProjects();if(["owner","admin"].includes(state.organizationRole))await loadApiTokens();}
   function renderInviteCard(){
     const card=$("invite-card");if(!card)return;
     if(state.invitationToken){card.classList.remove("hidden");$("accept-invitation").disabled=!state.session;$("invite-message").textContent=state.session?"Signed in as "+(state.session.user?.email||"your account")+". Accept to join the organization.":"Sign in or create an account with the invited email address to continue.";}
@@ -83,7 +83,7 @@
   }
   function renderTokenProjectOptions(){
     const list=$("api-token-projects");if(!list)return;
-    list.innerHTML=state.projects.length?state.projects.map(project=>"<label><input type='checkbox' name='api-token-project' value='"+esc(project.id)+"'> "+esc(project.name)+"</label>").join(""):"<p class='muted'>No projects yet; create a project to apply project-level restrictions.</p>";
+    list.innerHTML=state.projects.length?state.projects.map(project=>"<label><input type='checkbox' name='api-token-project' value='"+esc(project.id)+"' "+(state.project?.id===project.id?"checked":"")+( $("api-token-org-wide")?.checked?" disabled":"")+"> "+esc(project.name)+"</label>").join(""):"<p class='muted'>No projects yet; create a project or explicitly enable organization-wide access.</p>";
   }
   async function loadApiTokens(){
     if(!state.organization||!["owner","admin"].includes(state.organizationRole))return;
@@ -106,10 +106,12 @@
       if(!state.organization||!["owner","admin"].includes(state.organizationRole))throw new Error("Only organization owners and admins can create API tokens.");
       const name=$("api-token-name").value.trim();
       const scopes=Array.from(document.querySelectorAll("input[name='api-token-scope']:checked")).map(input=>input.value);
-      const projectIds=Array.from(document.querySelectorAll("input[name='api-token-project']:checked")).map(input=>input.value);
+      const organizationWide=$("api-token-org-wide").checked;
+      const projectIds=organizationWide?[]:Array.from(document.querySelectorAll("input[name='api-token-project']:checked")).map(input=>input.value);
       const expiry=$("api-token-expiry").value;
       if(name.length<3)throw new Error("Token name must contain at least three characters.");
       if(!scopes.length)throw new Error("Select at least one API scope.");
+      if(!organizationWide&&!projectIds.length)throw new Error("Select at least one project, or explicitly enable organization-wide access.");
       if(!expiry)throw new Error("Choose an expiry date.");
       const expiresAt=new Date(expiry+"T23:59:59Z");
       if(Number.isNaN(expiresAt.getTime())||expiresAt<=new Date())throw new Error("Choose a future expiry date.");
@@ -291,6 +293,7 @@
   function clearKeyForm(){$("key-pem").value="";$("key-fingerprint").value="";}
   async function signOut(){try{if(token())await fetch(state.config.url+"/auth/v1/logout",{method:"POST",headers:headers()})}catch{}saveSession(null);state.organization=null;state.organizationRole=null;state.project=null;$("team-tools").classList.add("hidden");$("api-token-tools").classList.add("hidden");$("workspace").classList.add("hidden");$("auth-card").classList.remove("hidden");renderInviteCard();message("auth-message","Signed out.");}
   async function init(){try{state.invitationToken=new URLSearchParams(window.location.search).get("invite");const tokenExpiry=new Date(Date.now()+90*86400000);$("api-token-expiry").value=tokenExpiry.toISOString().slice(0,10);renderInviteCard();const response=await fetch("/api/config",{cache:"no-store"});if(!response.ok)throw new Error("Enterprise backend configuration is unavailable.");state.config=await response.json();const saved=sessionStorage.getItem("ft_session");if(saved){try{state.session=JSON.parse(saved);await showWorkspace()}catch{saveSession(null)}}}catch(e){message("auth-message",e.message,true)}}
+  $("api-token-org-wide").addEventListener("change",renderTokenProjectOptions);
   $("create-api-token").addEventListener("click",createApiToken);$("copy-api-token").addEventListener("click",copyApiToken);$("create-invitation").addEventListener("click",createInvitation);$("copy-invite-link").addEventListener("click",copyInvitationLink);$("accept-invitation").addEventListener("click",acceptInvitation);$("register-key").addEventListener("click",registerKey);$("clear-key-form").addEventListener("click",clearKeyForm);$("key-pem").addEventListener("change",updateKeyFingerprint);
   $("sign-in").addEventListener("click",signIn);$("sign-up").addEventListener("click",signUp);$("sign-out").addEventListener("click",signOut);$("create-org").addEventListener("click",createOrganization);$("create-project").addEventListener("click",createProject);$("create-release").addEventListener("click",createRelease);$("create-policy").addEventListener("click",createPolicy);$("evaluate-policy").addEventListener("click",evaluatePolicy);$("ingest-sbom").addEventListener("click",ingestSbom);$("refresh-workspace").addEventListener("click",loadOrganizations);
   $("org-name").addEventListener("input",()=>{if(!$("org-slug").dataset.edited)$("org-slug").value=slugify($("org-name").value)});$("org-slug").addEventListener("input",()=>{$("org-slug").dataset.edited="true"});
