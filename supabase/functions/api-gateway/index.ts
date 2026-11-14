@@ -21,7 +21,9 @@ Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders});
   if(req.method!=="GET"&&req.method!=="POST")return respond({error:"Method not allowed"},405);
   const url=new URL(req.url);
-  if(!url.pathname.endsWith("/releases"))return respond({error:"Supported route: /releases"},404);
+  const route=url.pathname.split("/").filter(Boolean).at(-1)||"";
+  if(!["releases","keys","audit"].includes(route))return respond({error:"Supported routes: /releases, /keys and /audit"},404);
+  if(req.method==="POST"&&route!=="releases")return respond({error:"POST is supported only for /releases"},405);
 
   const authorization=req.headers.get("authorization")||"";
   const tokenMatch=authorization.match(/^Bearer (ft_live_[A-Za-z0-9_-]{43})$/);
@@ -44,7 +46,7 @@ Deno.serve(async(req)=>{
     }
     const projectId=String(req.method==="POST"?(body.project_id||""):(url.searchParams.get("project_id")||""));
     if(req.method==="POST"&&!projectId)return respond({error:"project_id is required"},400);
-    const requiredScope=req.method==="GET"?"releases:read":"releases:write";
+    const requiredScope=req.method==="POST"?"releases:write":route==="releases"?"releases:read":route==="keys"?"keys:read":"audit:read";
     const authResponse=await fetch(supabaseUrl+"/rest/v1/rpc/verify_api_token",{
       method:"POST",headers:publicHeaders,
       body:JSON.stringify({raw_token:tokenMatch[1],required_scope:requiredScope,target_project:projectId||null})
@@ -60,18 +62,39 @@ Deno.serve(async(req)=>{
     if(!apiTokenAllows(claims,tokenMatch[1],claims.organization_id,projectId||"",requiredScope)){
       return respond({error:"API token scope or project access denied"},403);
     }
-    if(req.method==="GET"){
+    if(req.method==="GET"&&route==="releases"){
       const query=new URLSearchParams({
         select:"id,project_id,version,artifact_name,artifact_sha256,status,created_at,published_at",
-        organization_id:"eq."+claims.organization_id,
-        order:"created_at.desc",
-        limit:"100"
+        organization_id:"eq."+claims.organization_id,order:"created_at.desc",limit:"100"
       });
       if(projectId)query.set("project_id","eq."+projectId);
       const result=await fetch(supabaseUrl+"/rest/v1/releases?"+query.toString(),{headers:serviceHeaders});
       const data=await jsonResponse(result);
       if(!data.ok)return respond({error:"Release registry query failed"},502);
       return respond({releases:data.value||[],count:Array.isArray(data.value)?data.value.length:0},200);
+    }
+    if(req.method==="GET"&&route==="keys"){
+      const query=new URLSearchParams({
+        select:"id,project_id,key_fingerprint,algorithm,status,valid_from,valid_until,rotated_from,revoked_at,created_at",
+        organization_id:"eq."+claims.organization_id,order:"created_at.desc",limit:"100"
+      });
+      if(projectId)query.set("project_id","eq."+projectId);
+      const result=await fetch(supabaseUrl+"/rest/v1/signing_keys?"+query.toString(),{headers:serviceHeaders});
+      const data=await jsonResponse(result);
+      if(!data.ok)return respond({error:"Signing-key registry query failed"},502);
+      return respond({keys:data.value||[],count:Array.isArray(data.value)?data.value.length:0},200);
+    }
+    if(req.method==="GET"&&route==="audit"){
+      const query=new URLSearchParams({
+        select:"id,actor_id,action,resource_type,resource_id,metadata,previous_hash,event_hash,occurred_at",
+        organization_id:"eq."+claims.organization_id,order:"id.desc",limit:"500"
+      });
+      const result=await fetch(supabaseUrl+"/rest/v1/audit_events?"+query.toString(),{headers:serviceHeaders});
+      const data=await jsonResponse(result);
+      if(!data.ok)return respond({error:"Audit registry query failed"},502);
+      const events=Array.isArray(data.value)?data.value:[];
+      const filtered=projectId?events.filter((event)=>event.metadata?.project_id===projectId):events;
+      return respond({events:filtered.slice(0,100),count:filtered.length,partial:events.length===500},200);
     }
 
     const version=String(body.version||"").trim();
