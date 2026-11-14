@@ -57,8 +57,14 @@ Deno.serve(async (request: Request) => {
     const now = Date.now();
     const validFrom = Date.parse(row.valid_from);
     const validUntil = row.valid_until ? Date.parse(row.valid_until) : null;
-    const active = row.status === "active" && Number.isFinite(validFrom) && validFrom <= now
-      && (validUntil === null || (Number.isFinite(validUntil) && validUntil > now));
-    return respond({ trusted: active, status: active ? "active" : row.status, algorithm: row.algorithm, key_id: row.key_fingerprint, checked_at: new Date(now).toISOString() });
+    const status = row.status !== "active" ? row.status
+      : !Number.isFinite(validFrom) ? "invalid"
+      : validFrom > now ? "not_yet_valid"
+      : validUntil !== null && (!Number.isFinite(validUntil) || validUntil <= now) ? "expired"
+      : row.algorithm !== "Ed25519" ? "unsupported_algorithm"
+      : row.key_fingerprint.toLowerCase() !== String(body.key_id).toLowerCase() ? "fingerprint_mismatch"
+      : "active";
+    const trusted = status === "active";
+    return respond({ trusted, status, algorithm: row.algorithm, key_id: row.key_fingerprint, checked_at: new Date(now).toISOString() });
   } catch { return respond({ error: "Trust registry is temporarily unavailable" }, 503); }
 });
