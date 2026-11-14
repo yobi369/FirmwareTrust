@@ -277,6 +277,8 @@ begin
     raise exception 'FAIL: second creator bootstrap failed';
   end if;
 
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner_id::text,'email','ft-test-owner@example.invalid')::text,true);
   invitation_result := public.create_organization_invitation(org_a,'ft-test-invitee@example.invalid','viewer',7);
   invite_token := invitation_result->>'token';
   invitation_id := (invitation_result->>'invitation_id')::uuid;
