@@ -48,7 +48,8 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 - [x] Validate policy rule object shape, supported keys and primitive types; project policies take precedence over organization policies.
 - [x] Add a negative-path integration assertion proving incomplete evidence blocks a release.
 - [ ] Bind manifest policy evidence to a non-forgeable server-side cryptographic verification attestation; current database check of manifest fields is not cryptographic verification.
-- [ ] Add policy authoring/version history UI, approval collection, quorum tests and an atomic evaluate-and-publish workflow.
+- [x] Add console controls to create versioned organization/project policies, list applicable policy versions and evaluate a selected release.
+- [ ] Add approval collection, quorum tests and an atomic evaluate-and-publish workflow.
 - [ ] Add executive and engineering reports with CSV/JSON export.
 - [ ] Test policy changes after approval, expired exceptions and reviewer independence.
 
