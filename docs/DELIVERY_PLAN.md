@@ -1,98 +1,102 @@
 # Enterprise Delivery Plan
 
-This plan turns the FirmwareTrust feature set into testable delivery gates. Status is deliberately conservative: the dedicated backend and initial tenant schema are deployed; the authenticated organization/project/release console is in preview. Database-level authenticated security tests now pass, while browser-driven auth/session validation and production operations remain open.
+This plan tracks implementation and validation of FirmwareTrust's commercial control plane. Status distinguishes deployed backend capabilities from browser/runtime validation and production operations.
 
 ## Workstreams
 
 ### 1. Identity and organizations
-- [x] Provision a dedicated Supabase project for FirmwareTrust (EU West, quoted $0/month).
-- [x] Deploy initial organization, membership, project, release, key, SBOM, policy, approval, token, webhook and audit schema.
-- [x] Enable tenant RLS and add owner succession, audit append-only and approval separation controls.
-- [x] Secure creator-only first-owner bootstrap through a narrow private SECURITY DEFINER helper; the public RPC remains SECURITY INVOKER.
-- [x] Add and execute transactional authenticated RLS integration coverage for first-owner bootstrap and cross-tenant read denial.
-- [ ] Complete browser-driven auth/session lifecycle, invitation flow, cross-tenant write tests and owner succession.
+- [x] Provision a dedicated Supabase project for FirmwareTrust in EU West.
+- [x] Deploy organization, membership, project, release, key, SBOM, policy, approval, token, webhook, invitation and audit schemas.
+- [x] Enable tenant RLS with action-specific policies and secure first-owner bootstrap.
+- [x] Add authenticated SQL integration coverage for first-owner bootstrap, tenant isolation and role restrictions.
+- [x] Add owner/admin-managed team invitations with one-time 256-bit tokens, SHA-256 hashes at rest, email binding, 1–30 day expiry, revocation, acceptance and audit events.
+- [x] Add Enterprise Console invitation creation, pending/accepted/revoked/expired listing and one-time copyable links.
+- [ ] Add email delivery provider integration and browser E2E for signup, email mismatch, expiry and acceptance.
+- [ ] Complete browser auth/session lifecycle, cross-tenant write tests and owner succession.
 
-### 2. Registry and audit
-- [x] Validate signed Ed25519 manifests against an active registered public key and persist draft release records through an authenticated Edge Function.
-- [x] Append a per-organization audit event transactionally when a release is registered.
-- Add immutable release metadata, idempotency, release search, filters, export and verification history.
-- [x] Test release audit insertion and audit-chain continuity in the authenticated SQL integration suite.
-- [ ] Add Edge Function integration tests for valid, tampered, revoked-key, cross-tenant and duplicate-version submissions.
+### 2. Release registry and audit
+- [x] Register signed Ed25519 manifests through authenticated Edge Functions after active registry-key and tenant checks.
+- [x] Persist immutable server-side verification attestations atomically with trusted release registration.
+- [x] Freeze release identity, artifact digest and manifest after registration/review begins.
+- [x] Append transactional audit events for release registration, attestations, review decisions, publication, key lifecycle and SBOM ingestion.
+- [x] Preserve hash-chain continuity and test it in the authenticated SQL integration suite.
+- [x] Add scoped API read access to release metadata and audit history.
+- [ ] Add idempotency keys, richer search/filter/export and long-term verification history UI.
+- [ ] Add live Edge Function tests for valid, tampered, revoked-key, cross-tenant and duplicate-version submissions.
 
 ### 3. Key lifecycle
-- [x] Register public keys and SHA-256 fingerprints; keep private keys customer-controlled.
-- [x] Implement atomic rotation, predecessor/successor relationships and irreversible revocation with reasons.
-- [x] Preserve historical public-key evidence and append audit events for rotation/revocation.
-- [x] Enforce Ed25519 public-key SPKI format and verify the 16-character M0 fingerprint against the raw public key bytes in the database trigger; reject private-key PEMs and mismatches.
-- [x] Add and execute authenticated integration tests for role denial, cross-tenant denial, duplicate fingerprints, private-key PEM rejection, fingerprint mismatch rejection, immutable fields, rotation, revocation, audit-chain continuity and transaction rollback.
-- [ ] Add compromised-key response tests against the future online verifier.
-- [x] Add an optional signed organization/project trust scope to release manifests.
-- [x] Deploy a minimal public key-status Edge Function; it returns only the status for the exact organization/project/key tuple and uses a server-side Supabase secret key.
-- [x] Make registry-scoped browser verification fail closed when the key is not active or the registry cannot be reached.
-- [ ] Complete browser end-to-end tests for active, rotated, revoked, expired, missing and unavailable registry states.
+- [x] Register Ed25519 public keys only; private signing keys remain customer-controlled.
+- [x] Validate SPKI encoding and M0-compatible key fingerprint in the database.
+- [x] Enforce immutable public-key material, duplicate active fingerprint rejection, atomic rotation and irreversible revocation with reason.
+- [x] Preserve key lifecycle audit events and historical key evidence.
+- [x] Deploy a minimal public key-status Edge Function; it returns only status for the exact organization/project/key tuple.
+- [x] Make browser verification fail closed when a scoped key is not active or registry status cannot be reached.
+- [x] Add scoped API key-registry reads without exposing public-key PEM or private material.
+- [ ] Complete browser E2E for active, rotated, revoked, expired, missing and unavailable key states.
 
 ### 4. SBOM and vulnerability intelligence
-- [x] Parse CycloneDX JSON and SPDX JSON, including nested CycloneDX components and SPDX package URLs.
-- [x] Normalize and deduplicate components by purl/name/version and retain document SHA-256 evidence.
-- [x] Add atomic tenant-scoped SBOM ingestion and audit event creation through the authenticated database RPC.
-- [x] Integrate OSV.dev querybatch and hydrate advisory details; persist findings per affected component with source modification timestamps.
-- [x] Persist scan status, scan source/time, checked-component count, finding count and partial-scan warnings on each SBOM record.
-- [x] Surface SBOM inventory and recent vulnerability findings in the Enterprise Console.
-- [x] Follow OSV querybatch page tokens for up to five bounded continuation rounds; persist partial status if additional pages remain.
+- [x] Parse CycloneDX JSON and SPDX JSON, including nested components and package URLs.
+- [x] Normalize/deduplicate components and retain original document SHA-256 evidence.
+- [x] Persist SBOM documents, normalized components and audit events atomically.
+- [x] Integrate OSV.dev querybatch, advisory hydration and component-scoped vulnerability findings.
+- [x] Persist scan status, source/time, checked-component count, finding count and partial-scan warnings.
+- [x] Follow bounded OSV querybatch continuation and mark capped scans partial.
+- [x] Add Enterprise Console SBOM inventory and vulnerability findings.
+- [x] Add scoped API-token SBOM ingestion. The service validates the token again inside the same database transaction as SBOM persistence and audit insertion.
+- [x] Add Deno tests for CycloneDX/SPDX normalization, PURL parsing, deduplication, severity mapping, affected ranges and Ed25519 manifest verification.
 - [ ] Add scheduled rescans, freshness alerts, triage, false-positive exceptions and exception expiry.
-- [x] Add Deno unit tests for CycloneDX/SPDX normalization, root/nested components, PURL version detection, deduplication, severity mapping and affected ranges; CI type-checks all three Edge Functions.
-- [x] Extract Ed25519 manifest verification into a reusable Edge Function module and add tests for valid signatures, tampered payloads, tampered signature bytes and malformed signature lengths; CI run #173 passed these Deno tests and type-checks.
-- [ ] Add live Edge Function integration tests for malformed documents, unmatched PURLs, OSV partial/unavailable states and cross-tenant denial.
+- [ ] Add live integration tests for malformed documents, unmatched PURLs, OSV partial/unavailable states and cross-tenant denial.
 
 ### 5. Governance and reporting
-- [x] Add a tenant-scoped deterministic release policy evaluator for signed-manifest declarations, SBOM presence/completeness, vulnerability thresholds and independent approval counts.
-- [x] Validate policy rule object shape, supported keys and primitive types; project policies take precedence over organization policies.
-- [x] Add a negative-path integration assertion proving incomplete evidence blocks a release.
-- [x] Add immutable release verification attestations that only the service-role registration path can create; authenticated and anonymous clients cannot insert or mutate attestations.
-- [x] Add console controls to create versioned organization/project policies, list applicable policy versions and evaluate a selected release.
-- [x] Add policy-version pinning when a release enters review; policy versions and approval decisions are immutable.
-- [x] Add independent approval/rejection decisions with reviewer identity checks, one decision per reviewer per release/policy, and append-only audit events.
-- [x] Enforce policy evaluation and approval quorum before a release can become approved; direct status updates use the same database guard.
-- [x] Freeze release identity, artifact digest and manifest after review begins; add reviewer-only status update scope without granting metadata mutation.
-- [x] Execute the expanded authenticated integration suite after the review workflow changes; it now verifies service-role-only attestation creation, atomic release-plus-attestation registration, complete SBOM evidence, independent reviewer approval and successful policy-gated publication, in addition to blocking incomplete evidence.
-- [x] Bind Ed25519 verification in the authenticated register-release Edge Function v4 to a service-role-only, atomic release-plus-attestation RPC.
-- [x] Make the signed-manifest policy rule depend on the non-forgeable attestation rather than manifest field presence.
-- [x] Add a policy-gated publication RPC and database transition guard that re-check authorization, attestation and policy evidence.
-- [ ] Add executive and engineering reports with CSV/JSON export.
+- [x] Add tenant-scoped deterministic release-policy evaluation for attestation, SBOM presence/completeness, vulnerability thresholds and independent approvals.
+- [x] Validate policy rule shapes, supported keys and types; project policy precedence over organization policy.
+- [x] Add policy version authoring/listing/evaluation in the Enterprise Console.
+- [x] Pin policy versions when a release enters review.
+- [x] Add independent approval/rejection decisions, separation of duties and immutable reviewer decisions.
+- [x] Enforce quorum and policy evidence before approval; direct status updates use the same database guard.
+- [x] Add an atomic publish RPC and database transition guard that rechecks authorization, attestation and policy evidence.
+- [x] Test successful and blocked publication paths in the authenticated SQL integration suite.
+- [ ] Add executive/engineering reports with CSV/JSON export.
 - [ ] Test policy changes after approval, expired exceptions and reviewer independence.
 
-### 6. CI/CD
-- [x] Issue 256-bit random API tokens once, store SHA-256 hashes only, show safe metadata, scope to selected projects or explicitly to the organization, enforce expiry and irreversible revocation.
-- [x] Enable API gateway scopes for `releases:write`, `releases:read`, `keys:read`, `audit:read` and `sboms:write`.
-- [x] Add an API-token SBOM ingestion RPC that revalidates token hash, scope, project, expiry and revocation inside the same transaction as SBOM persistence and audit insertion.
-- [x] Authenticate API tokens in `register-release`, revalidate token scope/revocation/expiry inside the same database transaction as release+attestation creation, and serialize registration against revocation.
-- [ ] Add live CI-provider end-to-end tests and usage telemetry/rate limits.
+### 6. CI/CD and API integrations
+- [x] Issue high-entropy `ft_live_` API tokens once; store SHA-256 hashes only.
+- [x] Enforce owner/admin issuance, expiry, immutable scopes/project restrictions and irreversible revocation.
+- [x] Add safe token metadata listing without exposing token hashes.
+- [x] Validate token organization, scope, project restriction, expiry and revocation on every gateway request; update last-used time.
+- [x] Add API gateway routes for release listing, Ed25519-signed release registration, signing-key metadata reads, audit history reads and SBOM ingestion.
+- [x] Revalidate API-token scope/revocation/project at the same database transaction as release+attestation registration and SBOM persistence.
+- [x] Provide versioned API contract and CI/CD request examples.
+- [ ] Add GitHub Actions/provider end-to-end tests, usage telemetry and rate limits.
 - [ ] Add signed webhooks, replay protection and webhook delivery tests.
-- [ ] Provide GitHub Actions and generic shell examples.
+
+## Current backend and validation state
+
+- Dedicated Supabase project: `dyqhzbsfopzejhqwdzgg`.
+- Applied database migrations: **001–041**.
+- Edge Functions: `key-status` v2, `register-release` v4, `ingest-sbom` v10 and `api-gateway` v5.
+- Supabase security advisor: zero findings after the latest schema changes.
+- Performance advisor: no remaining missing-FK-index or overlapping permissive RLS warnings. Remaining unused-index notices are informational and should be reassessed after representative workload data exists.
+- The authenticated SQL integration suite passed against the dedicated project after release governance, verification attestations, invitations and API-token changes. It covers tenant isolation, role restrictions, invitation token hashing/email binding/acceptance/revocation/audit, attestation forgery denial, policy-gated approval/publication, API-token scope/project/expiry/revocation and API-token SBOM ingestion. Fixtures roll back.
+- Latest Deno test/type-check run passed the SBOM, Ed25519 and API-token suites and type-checked the Edge Functions, including the API gateway and SBOM API-token path.
+- Python CI jobs are being checked on the current head.
 
 ## Release gates
 
-| Gate | Exit criteria |
-|---|---|
-| A — Infrastructure | Dedicated backend project; secrets configured; schema deployed; RLS and auth integration tests pass |
-| B — Core control plane | Organization/team workflows, release registry, audit history and key lifecycle work end-to-end |
-| C — Intelligence | SBOM ingestion, component inventory, vulnerability findings and freshness surfaced |
-| D — Governance | Policies, approvals, release gates, reports and CI/CD API available |
-| E — Pilot-ready | Independent security review, operational runbooks, backup restore, monitoring, privacy/export process and pilot acceptance |
-
-## Definition of done for a capability
-
-A capability is not complete because a screen or endpoint exists. It must have:
-- validated input and documented API behavior;
-- server-side authorization and database tenant isolation;
-- positive and negative automated tests;
-- audit coverage for security-sensitive mutations;
-- observable errors and operational metrics;
-- user-facing documentation;
-- deployment verification in the intended environment.
+| Gate | Exit criteria | Current assessment |
+|---|---|---|
+| A — Infrastructure | Dedicated backend, secrets, schema, RLS and auth integration tests | Backend foundation and SQL security suite pass |
+| B — Core control plane | Team, release registry, audit and key lifecycle end-to-end | Database and console workflows implemented; browser E2E remains |
+| C — Intelligence | SBOM ingestion, inventory, vulnerability findings and freshness | Ingestion and OSV enrichment implemented; scheduled rescans remain |
+| D — Governance | Policies, approvals, release gates, reports and CI/CD API | Policies, approvals, publication and initial CI/CD API implemented; reports/webhooks remain |
+| E — Pilot-ready | Independent review, runbooks, restore, monitoring, privacy/export and pilot acceptance | Not yet met |
 
 ## Current blockers
 
-FirmwareTrust now has a dedicated Supabase project (`dyqhzbsfopzejhqwdzgg`) separate from the user's unrelated databases. Its first tenant schema and security hardening migrations are deployed. The Vercel project has the public Supabase URL and publishable key configured; no service-role key is exposed to the browser.
+The dedicated Supabase backend is separate from the user's other projects. Publishable credentials are used by browser code; server-only secret credentials are confined to Edge Function runtimes. No service-role/secret key is shipped to the browser or committed to the repository.
 
-The initial authenticated console is deployed as a preview and supports account sign-in/sign-up, organization creation, project creation, metadata-only draft releases, signed-manifest release registration and signing-key lifecycle management. A transactional SQL integration suite at `supabase/tests/enterprise_rls_integration.sql` has been executed successfully against the dedicated Supabase project. It covers first-owner bootstrap, cross-tenant reads, developer-role key restrictions, duplicate active fingerprints, private-key PEM rejection, fingerprint mismatch rejection, immutable public-key material, key rotation/revocation and audit hash-chain continuity; fixtures are rolled back. The first-owner bootstrap was hardened in migration `202611140009_secure_private_organization_bootstrap.sql` after the live test exposed an RLS failure in the earlier invoker-only path. Migration `202611140010_enforce_ed25519_public_key_fingerprint.sql` now validates public-key encoding and fingerprint integrity at the database boundary. Registry-scoped manifests can now bind organization/project identifiers into the Ed25519-signed payload, and the deployed `key-status` Edge Function provides a minimal status lookup. The browser verifier checks that status and fails closed for non-active or unavailable registry results. The `key-status` v2, `register-release` v5, `api-gateway` v3 and authenticated `ingest-sbom` v9 Edge Functions are deployed; the current API-token and SBOM gateway revisions are awaiting deployment verification. The SQL suite verifies release and SBOM audit insertion, component RLS, per-component finding uniqueness and rollback, but the full browser-to-function paths have not yet been exercised with real user sessions and external OSV responses. Browser-driven auth/session testing, invitation expiry/replay, cross-tenant write coverage and production operational validation remain open. Release review requests, independent approval/rejection decisions, pinned policy versions, non-forgeable verification attestations and policy-gated publication are implemented in the database and Enterprise Console. The latest Edge Function and UI changes still require runtime deployment verification. Team invitations, scoped API token issuance, signed webhooks and enterprise reports remain incomplete hosted workflows. Foreign-key indexes and overlapping permissive RLS policies have been addressed; remaining performance notices are unused-index observations on this newly provisioned database and should be reassessed after representative workload data exists. The release UPDATE RLS policies were consolidated after the review-role addition; the performance advisor no longer reports overlapping permissive policies.
+The current enterprise implementation is committed on `feature/enterprise-platform-foundation` and remains in draft PR #1. Vercel is currently rejecting new preview builds because of its build-rate limit. Therefore the latest Enterprise Console changes are not yet confirmed live in a new preview; the permanent production URL still serves the older M0 workbench.
+
+The backend supports authenticated signed-release registration, key lifecycle, SBOM/OSV ingestion, versioned policies, independent approvals, policy-gated publication, one-time team invitations and scoped CI/CD API tokens. The API gateway currently serves release read/write, key registry read, audit read and SBOM ingestion. The full browser-to-function workflows still need end-to-end testing with real sessions and API tokens.
+
+Remaining production gates include email delivery for invitations, scheduled OSV rescans/triage, signed webhooks, executive reporting, API rate limiting/usage telemetry, independent security review, backup/restore verification, monitoring, incident runbooks and pilot acceptance. No production-readiness claim is made until these gates are completed.
