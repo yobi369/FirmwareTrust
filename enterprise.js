@@ -89,7 +89,7 @@
     if(!state.organization||!["owner","admin"].includes(state.organizationRole))return;
     const list=$("api-token-list");list.innerHTML="<p class='muted'>Loading API tokens…</p>";
     try{
-      const rows=await request("/rest/v1/api_tokens?select=id,name,token_prefix,scopes,project_ids,expires_at,revoked_at,last_used_at,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&order=created_at.desc&limit=50")||[];
+      const rows=await request("/rest/v1/api_token_registry?select=id,name,token_prefix,scopes,project_ids,expires_at,revoked_at,last_used_at,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&order=created_at.desc&limit=50")||[];
       state.apiTokens=rows;
       list.innerHTML=rows.length?rows.map(item=>{
         const expired=item.expires_at&&Date.parse(item.expires_at)<=Date.now();
