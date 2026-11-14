@@ -1,6 +1,6 @@
 # Release Policy Evaluation
 
-**Status:** Version-pinned policy evaluation and independent approval workflow implemented; publication remains blocked pending non-forgeable cryptographic verification attestations.
+**Status:** Version-pinned policy evaluation, independent approvals, non-forgeable server-side verification attestations and a policy-gated publication transaction implemented. End-to-end deployment and runtime verification remain pending.
 
 ## Supported versioned policy rules
 
@@ -34,12 +34,12 @@ The function runs as `SECURITY INVOKER`, checks tenant membership, reads only ro
 
 ## Important trust boundary
 
-The `require_signed_manifest` rule currently checks that the stored manifest contains signature material and a registry scope. That database check is **not a cryptographic signature verification**. The authenticated `register-release` Edge Function is the component that verifies Ed25519 signatures and active registry-key status before accepting signed releases. Direct metadata-only drafts remain unsigned and must not be treated as verified releases.
+The `require_signed_manifest` rule now requires a row in `release_verification_attestations` matching the release, tenant scope and manifest key ID. The authenticated `register-release` Edge Function verifies the Ed25519 signature and active registry-key status, then calls a service-role-only database RPC that atomically creates the release and attestation. Direct metadata-only drafts cannot create attestations and cannot pass this rule.
 
 Release review is now an explicit workflow: an owner/admin/release manager requests review; the database pins the applicable policy version; an independent owner/admin/release manager/security analyst records one immutable decision; the evaluator enforces quorum and evidence before the release can become `approved`. The release identity, artifact digest, manifest and pinned policy cannot be changed after review begins. Approval decisions and status transitions are appended to the audit chain. Direct status updates cannot bypass the same policy checks.
 
-**Publication is intentionally disabled.** An `approved` release cannot transition to `published` until the system binds the Edge Function's cryptographic signature verification result to a non-forgeable server-side attestation that direct authenticated table writes cannot fabricate. The current policy evaluator checks manifest signature/scope declarations only; it does not independently verify Ed25519.
+Publication now requires an approved release, a matching immutable server-created attestation and a fresh passing policy evaluation. The `publish_release` SECURITY INVOKER RPC performs the transaction, while a database trigger repeats the authorization and evidence checks so direct status updates cannot bypass the gate. The attestation is trusted because only the authenticated Edge Function's service-role registration path can create it; the secret key is never sent to the browser.
 
 ## Validation
 
-The authenticated SQL integration suite covers policy blocking, pinned policy review, independent reviewer decisions, duplicate-decision rejection, audit insertion, direct status-bypass rejection and release-evidence immutability. The latest expanded integration run still needs a successful execution after the new review workflow changes.
+The authenticated SQL integration suite covers policy blocking, pinned policy review, independent reviewer decisions, duplicate-decision rejection, audit insertion, direct status-bypass rejection and release-evidence immutability. The expanded review-workflow SQL assertions still need a successful post-change execution. End-to-end Edge Function tests must verify that a valid signed manifest creates an attestation, while tampered signatures, revoked keys, cross-tenant requests and direct authenticated attestation inserts fail.
