@@ -69,12 +69,20 @@ begin
   if not exists(
     select 1 from public.api_tokens t
     where t.id=api_token_id
-      and t.token_hash=encode(extensions.digest(convert_to(api_token_secret,'utf8'),'sha256'),'hex')
       and t.token_prefix=left(api_token_secret,16)
       and t.project_ids=array[project_a]
   ) then
-    raise exception 'FAIL: API token hash, prefix or project scope was not stored correctly';
+    raise exception 'FAIL: API token prefix or project scope was not stored correctly';
   end if;
+  set local role service_role;
+  perform set_config('request.jwt.claim.role','service_role',true);
+  select t.token_hash into stored_token_hash from public.api_tokens t where t.id=api_token_id;
+  if stored_token_hash<>encode(extensions.digest(convert_to(api_token_secret,'utf8'),'sha256'),'hex') then
+    raise exception 'FAIL: API token secret was not stored as a SHA-256 hash';
+  end if;
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   begin
     select t.token_hash into stored_token_hash from public.api_tokens t where t.id=api_token_id;
     raise exception 'FAIL: authenticated client can read the stored API token hash';
