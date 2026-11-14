@@ -41,6 +41,7 @@ async function createIdentity(){
     const label=$("key-label").value.trim()||"FirmwareTrust key";
     download("firmwaretrust-"+label.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")+".ftkey",JSON.stringify(vault,null,2),"application/json");
     download("firmwaretrust-public-key.pem",pem("PUBLIC KEY",spki),"application/x-pem-file");
+    $("key-pass").value=""; $("key-pass-confirm").value="";
     show("identity-result",`<h4>Signing identity created</h4><p>Key ID: <code>${vault.key_id}</code></p><p>Algorithm: Ed25519 · Vault encryption: AES-256-GCM · PBKDF2 iterations: ${iterations.toLocaleString()}</p><p>Two files downloaded: encrypted private-key vault (.ftkey) and public key (.pem). Store the vault safely and keep the public key separate for verification.</p>`);
   }catch(e){fail("identity-result",e)}finally{setBusy(btn,false,"Generate encrypted key vault")}
 }
@@ -81,7 +82,7 @@ async function signRelease(){
   const name=firmware.name+".manifest.json";
   download(name,JSON.stringify(manifest,null,2)+"\n","application/json");
   show("sign-result",`<h4>Release manifest signed</h4><p>Artifact: <b>${escapeHtml(firmware.name)}</b> · ${fileBytes.length.toLocaleString()} bytes</p><p>SHA-256: <code>${hash}</code></p><p>Signer key ID: <code>${id}</code></p><p>Manifest downloaded: <b>${escapeHtml(name)}</b>. Keep it with the exact firmware artifact and distribute the public key through a separate trusted channel.</p>`);
- }catch(e){fail("sign-result",e)}finally{setBusy(btn,false,"Create signed release manifest")}
+ }catch(e){fail("sign-result",e)}finally{$("sign-pass").value="";setBusy(btn,false,"Create signed release manifest")}
 }
 async function verifyRelease(){
  const btn=$("verify-release");setBusy(btn,true,"Verifying…");$("tamper-test").disabled=true;
