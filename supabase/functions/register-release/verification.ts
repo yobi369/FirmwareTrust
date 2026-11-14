@@ -11,13 +11,13 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function pemDer(pem: string): Uint8Array {
+function pemDer(pem: string): ArrayBuffer {
   const match = pem.match(/-----BEGIN PUBLIC KEY-----([\s\S]+?)-----END PUBLIC KEY-----/);
   if (!match) throw new Error("Registered public key PEM is invalid");
   const encoded = match[1].replace(/\s/g, "");
   const binary = atob(encoded);
   if (binary.length < 32 || binary.length > 512) throw new Error("Registered public key PEM has an invalid size");
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const der = new Uint8Array(binary.length);\n  for (let index = 0; index < binary.length; index++) der[index] = binary.charCodeAt(index);\n  return der.buffer;
 }
 
 export interface VerificationEvidence {
