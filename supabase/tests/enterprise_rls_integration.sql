@@ -26,6 +26,8 @@ declare
   fp_c text := left(encode(extensions.digest(decode('404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f','hex'),'sha256'),'hex'),16);
   org_a uuid;
   org_b uuid;
+  project_a uuid;
+  release_a uuid;
   key_a uuid;
   key_b uuid;
   n integer;
@@ -34,6 +36,16 @@ begin
   org_a := public.create_organization('FirmwareTrust Test Org','ft-test-org-rls-20261114');
   if not exists(select 1 from public.organization_memberships where organization_id=org_a and user_id=owner_id and role='owner') then
     raise exception 'FAIL: creator did not become first owner';
+  end if;
+
+  insert into public.projects(organization_id,name,slug,created_by)
+  values(org_a,'FirmwareTrust Test Project','ft-test-project',owner_id)
+  returning id into project_a;
+  insert into public.releases(organization_id,project_id,version,artifact_name,artifact_sha256,manifest,status,created_by)
+  values(org_a,project_a,'0.0.1','test-firmware.bin',repeat('a',64),jsonb_build_object('source','integration-test'),'draft',owner_id)
+  returning id into release_a;
+  if not exists(select 1 from public.audit_events where organization_id=org_a and action='release.registered' and resource_id=release_a::text) then
+    raise exception 'FAIL: release registration was not audited';
   end if;
 
   insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
