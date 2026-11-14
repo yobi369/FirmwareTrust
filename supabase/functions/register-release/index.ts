@@ -1,3 +1,5 @@
+import { verifyEd25519Manifest } from "./verification.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "apikey, authorization, content-type, x-client-info",
@@ -12,14 +14,6 @@ function respond(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return "{" + Object.keys(record).sort().map((key) => JSON.stringify(key) + ":" + canonical(record[key])).join(",") + "}";
-  }
-  return JSON.stringify(value) ?? "null";
-}
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -129,19 +123,10 @@ Deno.serve(async (request: Request) => {
       return respond({ error: "The signing key is not currently active and trusted", key_status: key.status }, 422);
     }
 
-    const pemMatch = String(key.public_key_pem).match(/-----BEGIN PUBLIC KEY-----([\s\S]+?)-----END PUBLIC KEY-----/);
-    if (!pemMatch) return respond({ error: "Registered public key PEM is invalid" }, 500);
-    const der = Uint8Array.from(atob(pemMatch[1].replace(/\s/g, "")), (character) => character.charCodeAt(0));
-    const publicKey = await crypto.subtle.importKey("spki", der, { name: "Ed25519" }, false, ["verify"]);
-    const payload = JSON.parse(JSON.stringify(manifest));
-    delete payload.signature.value;
-    const signatureBytes = Uint8Array.from(atob(signature.value), (character) => character.charCodeAt(0));
-    const valid = await crypto.subtle.verify({ name: "Ed25519" }, publicKey, signatureBytes, new TextEncoder().encode(canonical(payload)));
-    if (!valid) return respond({ error: "Manifest Ed25519 signature verification failed" }, 422);
-
-    const payloadBytes = new TextEncoder().encode(canonical(payload));
-    const manifestDigest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", payloadBytes)), (byte) => byte.toString(16).padStart(2, "0")).join("");
-    const signatureDigest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", signatureBytes)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const verification = await verifyEd25519Manifest(manifest, String(key.public_key_pem));
+    if (!verification.valid) return respond({ error: "Manifest Ed25519 signature verification failed" }, 422);
+    const manifestDigest = verification.manifestSha256;
+    const signatureDigest = verification.signatureSha256;
 
     const registrationResponse = await fetch(supabaseUrl + "/rest/v1/rpc/register_verified_release", {
       method: "POST",
