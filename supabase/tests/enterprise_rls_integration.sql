@@ -142,8 +142,8 @@ begin
   values(org_a,fp_a,'Ed25519',pem_a,'active',owner_id)
   returning id into key_a;
 
-  insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
-  values(org_a,fp_c,'Ed25519',pem_c,'active',owner_id);
+  insert into public.signing_keys(organization_id,project_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
+  values(org_a,project_a,fp_c,'Ed25519',pem_c,'active',owner_id);
 
   update public.sbom_documents
   set scan_status='complete',scanned_at=now(),scanned_component_count=2,finding_count=0,scan_warning=null
