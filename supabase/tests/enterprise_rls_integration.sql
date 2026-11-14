@@ -99,8 +99,6 @@ begin
   if not exists(select 1 from public.api_token_registry where id=api_token_id and token_prefix=left(api_token_secret,16)) then
     raise exception 'FAIL: owner cannot read safe API token metadata';
   end if;
-  set local role anon;
-  perform set_config('request.jwt.claim.role','anon',true);
   api_token_verify_result := public.verify_api_token(api_token_secret,'releases:write',project_a);
   if api_token_verify_result->>'token_id'<>api_token_id::text or api_token_verify_result->>'organization_id'<>org_a::text then
     raise exception 'FAIL: valid scoped API token did not authenticate';
@@ -115,20 +113,12 @@ begin
     raise exception 'FAIL: API token accessed a project outside its project scope';
   exception when insufficient_privilege then null;
   end;
-  set local role authenticated;
-  perform set_config('request.jwt.claim.role','authenticated',true);
-  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform public.revoke_api_token(org_a,api_token_id);
-  set local role anon;
-  perform set_config('request.jwt.claim.role','anon',true);
   begin
     perform public.verify_api_token(api_token_secret,'releases:write',project_a);
     raise exception 'FAIL: revoked API token still authenticated';
   exception when sqlstate '28000' then null;
   end;
-  set local role authenticated;
-  perform set_config('request.jwt.claim.role','authenticated',true);
-  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   if not exists(select 1 from public.api_tokens where id=api_token_id and revoked_at is not null) then
     raise exception 'FAIL: API token revocation was not persisted';
   end if;
