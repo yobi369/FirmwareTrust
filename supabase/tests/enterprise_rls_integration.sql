@@ -283,6 +283,7 @@ begin
   if api_sbom_id is null or not exists(select 1 from public.audit_events where organization_id=org_a and action='sbom.ingested' and resource_id=api_sbom_id::text) then
     raise exception 'FAIL: API-token SBOM ingestion was not persisted and audited';
   end if;
+  update public.sbom_documents set scan_status='complete',scanned_at=now(),scanned_component_count=1,finding_count=0 where id=api_sbom_id;
   perform public.revoke_api_token(org_a,api_token_id3);
   set local role service_role;
   perform set_config('request.jwt.claim.role','service_role',true);
