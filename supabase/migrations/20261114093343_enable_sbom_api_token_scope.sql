@@ -1,0 +1,1 @@
+alter table public.api_tokens drop constraint if exists api_tokens_current_scope_implemented_check;
