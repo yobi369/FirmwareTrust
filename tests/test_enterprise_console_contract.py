@@ -1,7 +1,5 @@
 """Static contract checks for the browser-based Enterprise Console."""
 
-from __future__ import annotations
-
 from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
