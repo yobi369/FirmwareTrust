@@ -18,7 +18,7 @@ function canonical(value: unknown): string {
     const record = value as Record<string, unknown>;
     return "{" + Object.keys(record).sort().map((key) => JSON.stringify(key) + ":" + canonical(record[key])).join(",") + "}";
   }
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? "null";
 }
 
 Deno.serve(async (request: Request) => {
@@ -105,9 +105,9 @@ Deno.serve(async (request: Request) => {
       return respond({ error: "The signing key is not currently active and trusted", key_status: key.status }, 422);
     }
 
-    const pemMatch = String(key.public_key_pem).match(/-----BEGIN PUBLIC KEY-----([\\s\\S]+?)-----END PUBLIC KEY-----/);
+    const pemMatch = String(key.public_key_pem).match(/-----BEGIN PUBLIC KEY-----([\s\S]+?)-----END PUBLIC KEY-----/);
     if (!pemMatch) return respond({ error: "Registered public key PEM is invalid" }, 500);
-    const der = Uint8Array.from(atob(pemMatch[1].replace(/\\s/g, "")), (character) => character.charCodeAt(0));
+    const der = Uint8Array.from(atob(pemMatch[1].replace(/\s/g, "")), (character) => character.charCodeAt(0));
     const publicKey = await crypto.subtle.importKey("spki", der, { name: "Ed25519" }, false, ["verify"]);
     const payload = JSON.parse(JSON.stringify(manifest));
     delete payload.signature.value;
