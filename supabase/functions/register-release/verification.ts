@@ -17,7 +17,9 @@ function pemDer(pem: string): ArrayBuffer {
   const encoded = match[1].replace(/\s/g, "");
   const binary = atob(encoded);
   if (binary.length < 32 || binary.length > 512) throw new Error("Registered public key PEM has an invalid size");
-  const der = new Uint8Array(binary.length);\n  for (let index = 0; index < binary.length; index++) der[index] = binary.charCodeAt(index);\n  return der.buffer;
+  const der = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) der[index] = binary.charCodeAt(index);
+  return der.buffer;
 }
 
 export interface VerificationEvidence {
