@@ -1,4 +1,4 @@
-import { apiTokenAllows, hashApiToken, type ApiTokenRecord } from "../_shared/api_tokens.ts";
+import { apiTokenAllows, type ApiTokenRecord } from "../_shared/api_tokens.ts";
 import { verifyEd25519Manifest } from "./verification.ts";
 
 const corsHeaders={
@@ -40,7 +40,8 @@ Deno.serve(async(req)=>{
     let body:Record<string,unknown>={};
     if(req.method==="POST"){
       const rawBody=await req.text();
-      if(new TextEncoder().encode(rawBody).length>1_000_000)return respond({error:"Request body exceeds the 1 MB limit"},413);
+      const bodyLimit=route==="sboms"?6_000_000:1_000_000;
+      if(new TextEncoder().encode(rawBody).length>bodyLimit)return respond({error:"Request body exceeds the "+(route==="sboms"?"6 MB":"1 MB")+" limit"},413);
       try{body=JSON.parse(rawBody);}catch{return respond({error:"Request body must be valid JSON"},400);}
       if(!body||typeof body!=="object"||Array.isArray(body))return respond({error:"JSON object body required"},400);
     }
