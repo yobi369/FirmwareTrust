@@ -46,6 +46,7 @@ declare
   api_token_result jsonb;
   api_token_id uuid;
   api_token_secret text;
+  api_token_verify_result jsonb;
   stored_token_hash text;
 begin
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
@@ -94,7 +95,40 @@ begin
     raise exception 'FAIL: authenticated client inserted an API token directly';
   exception when insufficient_privilege then null;
   end;
+
+  if not exists(select 1 from public.api_token_registry where id=api_token_id and token_prefix=left(api_token_secret,16)) then
+    raise exception 'FAIL: owner cannot read safe API token metadata';
+  end if;
+  set local role anon;
+  perform set_config('request.jwt.claim.role','anon',true);
+  api_token_verify_result := public.verify_api_token(api_token_secret,'releases:write',project_a);
+  if api_token_verify_result->>'token_id'<>api_token_id::text or api_token_verify_result->>'organization_id'<>org_a::text then
+    raise exception 'FAIL: valid scoped API token did not authenticate';
+  end if;
+  begin
+    perform public.verify_api_token(api_token_secret,'releases:read',project_a);
+    raise exception 'FAIL: API token granted a scope it does not possess';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.verify_api_token(api_token_secret,'releases:write','f2000000-0000-4000-8000-000000000099'::uuid);
+    raise exception 'FAIL: API token accessed a project outside its project scope';
+  exception when insufficient_privilege then null;
+  end;
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform public.revoke_api_token(org_a,api_token_id);
+  set local role anon;
+  perform set_config('request.jwt.claim.role','anon',true);
+  begin
+    perform public.verify_api_token(api_token_secret,'releases:write',project_a);
+    raise exception 'FAIL: revoked API token still authenticated';
+  exception when sqlstate '28000' then null;
+  end;
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   if not exists(select 1 from public.api_tokens where id=api_token_id and revoked_at is not null) then
     raise exception 'FAIL: API token revocation was not persisted';
   end if;
