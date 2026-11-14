@@ -138,6 +138,24 @@ Authorization: Bearer ft_live_<secret>
 
 Requires `releases:read`. An organization-wide token may omit project_id; a project-restricted token must supply an allowed project. The response contains release metadata only, not private manifests or signing material.
 
+### Read signing-key registry
+
+```http
+GET /functions/v1/api-gateway/keys?project_id=<project-uuid>
+Authorization: Bearer ft_live_<secret>
+```
+
+Requires `keys:read`. Returns fingerprints, algorithms, lifecycle status and validity timestamps only; public-key PEMs and private material are not returned.
+
+### Read audit history
+
+```http
+GET /functions/v1/api-gateway/audit?project_id=<project-uuid>
+Authorization: Bearer ft_live_<secret>
+```
+
+Requires `audit:read`. Returns the latest audit events and hash-chain fields. Project-scoped tokens receive only events tagged with that project in event metadata; organization-wide tokens may omit project_id.
+
 ### Register a signed release
 
 ```http
@@ -160,4 +178,4 @@ Requires `releases:write`. The gateway checks the token's organization/project s
 
 Owners/admins create tokens through `POST /rest/v1/rpc/create_api_token` with name, scopes, project IDs and expiry. The raw `ft_live_` secret is returned once; only its SHA-256 hash is stored. Owners/admins can list non-secret metadata through the `api_token_registry` view and revoke tokens through `POST /rest/v1/rpc/revoke_api_token`. The `verify_api_token` RPC is used by the gateway to check scope/project/expiry/revocation and update last-used time.
 
-The gateway currently implements only `releases:read` and `releases:write`. Other registered scope values are reserved for future endpoints. Rate limiting, per-token usage dashboards and broader SBOM/audit endpoints remain open.
+The gateway currently implements `releases:read`, `releases:write`, `keys:read` and `audit:read`. `sboms:write` remains reserved until the SBOM API route is implemented. Rate limiting, per-token usage dashboards and broader SBOM/audit endpoints remain open.
