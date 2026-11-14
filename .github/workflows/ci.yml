@@ -44,4 +44,4 @@ jobs:
       - name: Test SBOM normalization and OSV mapping
         run: deno test supabase/functions/ingest-sbom/sbom_test.ts supabase/functions/register-release/verification_test.ts supabase/functions/_shared/api_tokens_test.ts
       - name: Type-check Supabase Edge Functions
-        run: deno check supabase/functions/key-status/index.ts supabase/functions/register-release/index.ts supabase/functions/ingest-sbom/index.ts supabase/functions/api-gateway/index.ts
+        run: deno check supabase/functions/key-status/index.ts supabase/functions/register-release/index.ts supabase/functions/api-gateway/index.ts supabase/functions/ingest-sbom/index.ts supabase/functions/api-gateway/index.ts
