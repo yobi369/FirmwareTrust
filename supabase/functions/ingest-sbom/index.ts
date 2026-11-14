@@ -61,15 +61,16 @@ Deno.serve(async (request: Request) => {
   const publicHeaders = { apikey: publishableKey, Authorization: "Bearer " + publishableKey, "Content-Type": "application/json" };
   let headers: Record<string,string>;
   let actorId: string;
-  const apiTokenMode = Boolean(apiTokenMatch);
+  const apiToken = apiTokenMatch?.[1] ?? null;
+  const apiTokenMode = apiToken !== null;
   try {
-    if (apiTokenMode) {
+    if (apiToken) {
       try { secretKey = JSON.parse(secretRaw || "").default; } catch { secretKey = null; }
       if (!secretKey) return respond({ error: "Trusted SBOM API mode is not configured" }, 503);
       const serviceHeaders = { apikey: secretKey, Authorization: "Bearer " + secretKey, "Content-Type": "application/json" };
       const verifyResponse = await fetch(supabaseUrl + "/rest/v1/rpc/verify_api_token", {
         method: "POST", headers: publicHeaders,
-        body: JSON.stringify({ raw_token: apiTokenMatch[1], required_scope: "sboms:write", target_project: body.project_id })
+        body: JSON.stringify({ raw_token: apiToken, required_scope: "sboms:write", target_project: body.project_id })
       });
       const verified = await verifyResponse.json().catch(() => null);
       if (!verifyResponse.ok || verified?.organization_id !== body.organization_id || typeof verified?.created_by !== "string") {
