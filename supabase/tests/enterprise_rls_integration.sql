@@ -16,7 +16,7 @@ declare
   owner_id uuid := 'f1000000-0000-4000-8000-000000000001';
   outsider_id uuid := 'f1000000-0000-4000-8000-000000000002';
   developer_id uuid := 'f1000000-0000-4000-8000-000000000003';
-  reviewer_id uuid := 'f1000000-0000-4000-8000-000000000004';
+  reviewer_user_id uuid := 'f1000000-0000-4000-8000-000000000004';
   raw_a bytea := decode('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f','hex');
   raw_b bytea := decode('202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f','hex');
   raw_c bytea := decode('404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f','hex');
@@ -102,13 +102,13 @@ begin
   end if;
 
   insert into public.organization_memberships(organization_id,user_id,role)
-  values(org_a,reviewer_id,'security_analyst');
-  perform set_config('request.jwt.claim.sub',reviewer_id::text,true);
+  values(org_a,reviewer_user_id,'security_analyst');
+  perform set_config('request.jwt.claim.sub',reviewer_user_id::text,true);
   perform public.submit_release_approval(release_a,'approved','Integration approval; policy evidence is intentionally incomplete');
   if not exists(select 1 from public.releases where id=release_a and status='pending_approval') then
     raise exception 'FAIL: incomplete policy evidence incorrectly advanced release to approved';
   end if;
-  if not exists(select 1 from public.release_approvals where release_id=release_a and reviewer_id=reviewer_id and decision='approved') then
+  if not exists(select 1 from public.release_approvals a where a.release_id=release_a and a.reviewer_id=reviewer_user_id and a.decision='approved') then
     raise exception 'FAIL: reviewer decision was not persisted';
   end if;
 
@@ -169,7 +169,7 @@ begin
     raise exception 'FAIL: trusted registration did not atomically create a verification attestation';
   end if;
   perform public.request_release_approval(release_b);
-  perform set_config('request.jwt.claim.sub',reviewer_id::text,true);
+  perform set_config('request.jwt.claim.sub',reviewer_user_id::text,true);
   perform public.submit_release_approval(release_b,'approved','Independent approval for complete verified release evidence');
   if not exists(select 1 from public.releases where id=release_b and status='approved') then
     raise exception 'FAIL: complete verified release did not advance to approved';
