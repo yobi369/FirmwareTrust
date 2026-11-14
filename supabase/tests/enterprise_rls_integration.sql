@@ -68,6 +68,9 @@ begin
   if not exists(select 1 from public.audit_events where organization_id=org_a and action='sbom.ingested' and resource_id=sbom_a::text) then
     raise exception 'FAIL: SBOM ingestion was not audited';
   end if;
+  if not exists(select 1 from public.sbom_documents where id=sbom_a and scan_status='pending' and scanned_component_count=0 and finding_count=0) then
+    raise exception 'FAIL: initial SBOM scan state was not persisted';
+  end if;
 
   insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
   values(org_a,fp_a,'Ed25519',pem_a,'active',owner_id)
