@@ -319,17 +319,20 @@ begin
   if not exists(select 1 from public.organization_memberships where organization_id=org_a and user_id=invitee_id and role='viewer') then
     raise exception 'FAIL: invitation acceptance did not create the intended membership role';
   end if;
+  begin
+    perform public.accept_organization_invitation(invite_token);
+    raise exception 'FAIL: invitation token was reused after acceptance';
+  exception when unique_violation then null;
+  end;
+
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  perform set_config('request.jwt.claims',json_build_object('sub',owner_id::text,'email','ft-test-owner@example.invalid')::text,true);
   if not exists(select 1 from public.organization_invitations where id=invitation_id and accepted_at is not null and accepted_by=invitee_id) then
     raise exception 'FAIL: invitation acceptance was not recorded';
   end if;
   if not exists(select 1 from public.audit_events where organization_id=org_a and action='organization.invitation.accepted' and resource_id=invitation_id::text) then
     raise exception 'FAIL: invitation acceptance was not audited';
   end if;
-  begin
-    perform public.accept_organization_invitation(invite_token);
-    raise exception 'FAIL: invitation token was reused after acceptance';
-  exception when unique_violation then null;
-  end;
 
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform set_config('request.jwt.claims',json_build_object('sub',owner_id::text,'email','ft-test-owner@example.invalid')::text,true);
