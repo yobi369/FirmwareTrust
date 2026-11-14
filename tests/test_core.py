@@ -131,3 +131,18 @@ def test_key_pair_paths_must_be_distinct(tmp_path):
     with pytest.raises(FirmwareTrustError, match="must be different"):
         generate_key_pair(key_path, key_path)
     assert not key_path.exists()
+
+@pytest.mark.parametrize("manifest_target", ["firmware", "private_key"])
+def test_sign_refuses_manifest_path_overwriting_protected_input(tmp_path, manifest_target):
+    private, public = tmp_path / "private.pem", tmp_path / "public.pem"
+    firmware = tmp_path / "image.bin"
+    generate_key_pair(private, public)
+    firmware.write_bytes(b"preserve-this-payload")
+    manifest = firmware if manifest_target == "firmware" else private
+    before = manifest.read_bytes()
+
+    with pytest.raises(FirmwareTrustError, match="must not overwrite"):
+        sign_firmware(firmware, private, manifest)
+
+    assert manifest.read_bytes() == before
+
