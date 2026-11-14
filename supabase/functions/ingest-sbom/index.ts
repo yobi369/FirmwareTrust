@@ -144,13 +144,34 @@ Deno.serve(async (request: Request) => {
     if (!osvResponse.ok) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "unavailable", boundedCandidates.length, 0, "OSV.dev querybatch request failed"); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "unavailable", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
     const batch = await osvResponse.json().catch(() => null);
     if (!Array.isArray(batch.results) || batch.results.length !== boundedCandidates.length) { const saved = await persistScanStatus(supabaseUrl, headers, sbomId, "partial", boundedCandidates.length, 0, "OSV returned an incomplete batch response"); return respond({ sbom_id: sbomId, format: normalized.format, component_count: components.length, scanned_components: boundedCandidates.length, finding_count: 0, scan_status: "partial", scan_source: "OSV.dev", scan_status_persisted: saved }, 201); }
-    const querybatchHasMore = batch.results.some((result: any) => Boolean(result.next_page_token));
+    const mergedResults = batch.results.map((result: any) => ({ vulns: [...(result.vulns || [])], next_page_token: result.next_page_token || null }));
+    let pendingPages = mergedResults.map((result: any, index: number) => result.next_page_token ? { index, token: result.next_page_token } : null).filter(Boolean) as { index: number; token: string }[];
+    let paginationRounds = 0;
+    while (pendingPages.length && paginationRounds < 5) {
+      const pageQueries = pendingPages.map((page) => ({ ...queries[page.index], page_token: page.token }));
+      let pageResponse: Response;
+      try { pageResponse = await fetch("https://api.osv.dev/v1/querybatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ queries: pageQueries }) }); }
+      catch { break; }
+      if (!pageResponse.ok) break;
+      const pageBody = await pageResponse.json().catch(() => null);
+      if (!Array.isArray(pageBody?.results) || pageBody.results.length !== pendingPages.length) break;
+      const nextPages: { index: number; token: string }[] = [];
+      for (let pageIndex = 0; pageIndex < pendingPages.length; pageIndex++) {
+        const page = pendingPages[pageIndex];
+        const result = pageBody.results[pageIndex];
+        mergedResults[page.index].vulns.push(...(result.vulns || []));
+        if (result.next_page_token) nextPages.push({ index: page.index, token: result.next_page_token });
+      }
+      pendingPages = nextPages;
+      paginationRounds++;
+    }
+    const querybatchHasMore = pendingPages.length > 0;
     const vulnerabilityComponents = new Map<string, Set<string>>();
     for (let index=0; index<boundedCandidates.length; index++) {
       const component = boundedCandidates[index];
       const componentId = componentMap.get(String(component.purl || "") + "|" + component.component_name + "|" + String(component.version || ""));
       if (!componentId) continue;
-      for (const vuln of batch.results?.[index]?.vulns || []) {
+      for (const vuln of mergedResults[index].vulns) {
         if (!vuln.id) continue;
         if (!vulnerabilityComponents.has(vuln.id)) vulnerabilityComponents.set(vuln.id,new Set());
         vulnerabilityComponents.get(vuln.id)!.add(componentId);
