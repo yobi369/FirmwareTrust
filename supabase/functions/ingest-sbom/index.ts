@@ -29,7 +29,8 @@ Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return respond({ error: "Method not allowed" }, 405);
   const authorization = request.headers.get("authorization") || "";
-  if (!/^Bearer\s+\S+$/i.test(authorization)) return respond({ error: "Authentication required" }, 401);
+  const apiTokenMatch = authorization.match(/^Bearer (ft_live_[A-Za-z0-9_-]{43})$/);
+  if (!apiTokenMatch && !/^Bearer\s+\S+$/i.test(authorization)) return respond({ error: "Authentication required" }, 401);
   const length = Number(request.headers.get("content-length") || "0");
   if (length > 6 * 1024 * 1024) return respond({ error: "SBOM upload exceeds the 6 MB request limit" }, 413);
   let body: any;
@@ -51,25 +52,62 @@ Deno.serve(async (request: Request) => {
   if (components.length < 1 || components.length > 20000) return respond({ error: "SBOM must contain between 1 and 20000 unique components" }, 422);
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const publishableRaw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  const secretRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
   if (!supabaseUrl || !publishableRaw) return respond({ error: "SBOM service is not configured" }, 503);
   let publishableKey: string;
+  let secretKey: string | null = null;
   try { publishableKey = JSON.parse(publishableRaw).default; if (!publishableKey) throw new Error("Missing key"); }
   catch { return respond({ error: "SBOM service credentials are unavailable" }, 503); }
-  const headers = { apikey: publishableKey, Authorization: authorization };
+  const publicHeaders = { apikey: publishableKey, Authorization: "Bearer " + publishableKey, "Content-Type": "application/json" };
+  let headers: Record<string,string>;
+  let actorId: string;
+  const apiTokenMode = Boolean(apiTokenMatch);
   try {
-    const userResponse = await fetch(supabaseUrl + "/auth/v1/user", { headers });
-    if (!userResponse.ok) return respond({ error: "Authenticated user session is invalid" }, 401);
-    const user = await userResponse.json();
-    if (!user?.id) return respond({ error: "Authenticated user identity is unavailable" }, 401);
+    if (apiTokenMode) {
+      try { secretKey = JSON.parse(secretRaw || "").default; } catch { secretKey = null; }
+      if (!secretKey) return respond({ error: "Trusted SBOM API mode is not configured" }, 503);
+      const serviceHeaders = { apikey: secretKey, Authorization: "Bearer " + secretKey, "Content-Type": "application/json" };
+      const verifyResponse = await fetch(supabaseUrl + "/rest/v1/rpc/verify_api_token", {
+        method: "POST", headers: publicHeaders,
+        body: JSON.stringify({ raw_token: apiTokenMatch[1], required_scope: "sboms:write", target_project: body.project_id })
+      });
+      const verified = await verifyResponse.json().catch(() => null);
+      if (!verifyResponse.ok || verified?.organization_id !== body.organization_id || typeof verified?.created_by !== "string") {
+        return respond({ error: "API token is invalid or lacks SBOM access to this organization/project" }, verifyResponse.status === 403 ? 403 : 401);
+      }
+      const memberQuery = new URLSearchParams({ select: "role", organization_id: "eq." + body.organization_id, user_id: "eq." + verified.created_by, limit: "1" });
+      const memberResponse = await fetch(supabaseUrl + "/rest/v1/organization_memberships?" + memberQuery.toString(), { headers: serviceHeaders });
+      const memberships = await memberResponse.json().catch(() => null);
+      if (!memberResponse.ok || !Array.isArray(memberships) || memberships.length !== 1 ||
+          !["owner","admin","release_manager","developer","security_analyst"].includes(memberships[0].role)) {
+        return respond({ error: "API token creator is no longer authorized to ingest SBOMs" }, 403);
+      }
+      actorId = verified.created_by;
+      headers = serviceHeaders;
+    } else {
+      headers = { apikey: publishableKey, Authorization: authorization };
+      const userResponse = await fetch(supabaseUrl + "/auth/v1/user", { headers });
+      if (!userResponse.ok) return respond({ error: "Authenticated user session is invalid" }, 401);
+      const user = await userResponse.json();
+      if (!user?.id) return respond({ error: "Authenticated user identity is unavailable" }, 401);
+      actorId = user.id;
+    }
     const digestBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", documentBytes));
     const documentHash = Array.from(digestBytes, (byte) => byte.toString(16).padStart(2,"0")).join("");
-    const rpcResponse = await fetch(supabaseUrl + "/rest/v1/rpc/ingest_sbom", {
+    const rpcPath = apiTokenMode ? "/rest/v1/rpc/ingest_sbom_for_api" : "/rest/v1/rpc/ingest_sbom";
+    const rpcPayload = {
+      ...(apiTokenMode ? { target_actor: actorId } : {}),
+      target_org: body.organization_id, target_project: body.project_id, target_release: body.release_id || null,
+      target_format: normalized.format, target_spec_version: normalized.specVersion,
+      target_document_sha256: documentHash, target_document: document, target_components: components
+    };
+    const rpcResponse = await fetch(supabaseUrl + rpcPath, {
       method: "POST", headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ target_org: body.organization_id, target_project: body.project_id, target_release: body.release_id || null, target_format: normalized.format, target_spec_version: normalized.specVersion, target_document_sha256: documentHash, target_document: document, target_components: components })
+      body: JSON.stringify(rpcPayload)
     });
     const rpcBody = await rpcResponse.json().catch(() => null);
     if (!rpcResponse.ok) return respond({ error: rpcBody?.message || "SBOM ingestion was rejected by tenant policy" }, rpcResponse.status >= 400 && rpcResponse.status < 500 ? rpcResponse.status : 502);
-    const sbomId = typeof rpcBody === "string" ? rpcBody : rpcBody?.ingest_sbom;
+    const sbomId = typeof rpcBody === "string" ? rpcBody : rpcBody?.ingest_sbom || rpcBody?.ingest_sbom_for_api;
     if (!sbomId) return respond({ error: "SBOM ingestion did not return a document ID" }, 502);
 
     const componentQuery = new URLSearchParams({ select: "id,component_name,version,purl", sbom_id: "eq." + sbomId, limit: "20000" });
