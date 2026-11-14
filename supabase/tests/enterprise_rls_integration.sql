@@ -117,7 +117,7 @@ begin
     raise exception 'FAIL: release artifact digest changed after review began';
   exception when raise_exception then
     if sqlerrm like 'FAIL:%' then raise; end if;
-    if sqlerrm not like '%immutable once review begins%' then raise; end if;
+    if sqlerrm not like '%immutable after registration%' then raise; end if;
   end;
   if not exists(select 1 from public.audit_events where organization_id=org_a and action='release.approval.approved' and resource_id=release_a::text) then
     raise exception 'FAIL: reviewer decision was not appended to the audit chain';
