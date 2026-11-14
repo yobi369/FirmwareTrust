@@ -38,9 +38,9 @@
   async function loadReleases(){const list=$("release-list");list.innerHTML="<p class='muted'>Loading release history…</p>";try{const rows=await request("/rest/v1/releases?select=id,version,artifact_name,artifact_sha256,status,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&project_id=eq."+encodeURIComponent(state.project.id)+"&order=created_at.desc")||[];if(!rows.length){list.innerHTML="<p class='muted'>No releases registered for this project.</p>";return;}list.innerHTML=rows.map(release=>"<div class='record-item'><div><strong>"+esc(release.version)+" · "+esc(release.artifact_name)+"</strong><small>"+esc(release.status)+" · SHA-256 "+esc(release.artifact_sha256)+"</small></div><span class='status-text'>"+new Date(release.created_at).toLocaleDateString()+"</span></div>").join("");}catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}}
   async function createRelease(){try{const version=$("release-version").value.trim(),artifact=$("release-artifact").value.trim(),sha=$("release-sha").value.trim().toLowerCase();if(!state.project||!version||!artifact||!/^[a-f0-9]{64}$/.test(sha))throw new Error("Enter a version, artifact filename and 64-character SHA-256 digest.");await request("/rest/v1/releases",{method:"POST",headers:{"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({organization_id:state.organization.id,project_id:state.project.id,version,artifact_name:artifact,artifact_sha256:sha,created_by:state.session.user.id,manifest:{source:"enterprise-console"}})});$("release-version").value="";$("release-artifact").value="";$("release-sha").value="";await loadReleases();}catch(e){message("auth-message",e.message,true)}}
   function publicKeyDer(pem){
-    const match=pem.match(/-----BEGIN PUBLIC KEY-----([\\s\\S]+?)-----END PUBLIC KEY-----/);
+    const match=pem.match(/-----BEGIN PUBLIC KEY-----([\s\S]+?)-----END PUBLIC KEY-----/);
     if(!match)throw new Error("Paste a PEM-encoded PUBLIC KEY, not a private key.");
-    const raw=atob(match[1].replace(/\\s/g,""));
+    const raw=atob(match[1].replace(/\s/g,""));
     if(raw.length<32||raw.length>12000)throw new Error("Public key PEM is malformed or too large.");
     return Uint8Array.from(raw,c=>c.charCodeAt(0));
   }
