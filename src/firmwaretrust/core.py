@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -113,7 +113,7 @@ def sign_firmware(
             "digest": digest,
         },
         "signature": {"algorithm": SIGNATURE_ALGORITHM, "key_id": key_id(public_key)},
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     signature = private_key.sign(canonical_manifest_bytes(payload))
     document = {
