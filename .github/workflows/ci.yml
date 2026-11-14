@@ -33,3 +33,15 @@ jobs:
       - name: Lint
         if: matrix.python-version == '3.13'
         run: ruff check .
+
+  edge-function-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Test SBOM normalization and OSV mapping
+        run: deno test supabase/functions/_shared/sbom_test.ts
+      - name: Type-check Supabase Edge Functions
+        run: deno check supabase/functions/key-status/index.ts supabase/functions/register-release/index.ts supabase/functions/ingest-sbom/index.ts
