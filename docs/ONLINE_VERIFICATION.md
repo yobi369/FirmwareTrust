@@ -41,7 +41,7 @@ Possible statuses include `active`, `rotated`, `revoked`, `expired`, `not_yet_va
 ## Trust boundaries and limitations
 
 - The organization and project identifiers are bound into the manifest signature.
-- The key ID is the existing M0-compatible first 16 hexadecimal characters of SHA-256 over the raw Ed25519 public key.
+- The key ID is the existing M0-compatible first 16 hexadecimal characters of SHA-256 over the raw Ed25519 public key. The database trigger validates the PEM's Ed25519 SubjectPublicKeyInfo encoding and recomputes this fingerprint before accepting a registration, preventing a caller from attaching an arbitrary fingerprint or private-key PEM.
 - The online endpoint checks the exact organization/project/key tuple. It does not independently certify firmware safety or prove a device enforces the result.
 - Manifests without registry context remain compatible with offline verification, but cannot establish current registry status.
 - Production hardening still requires rate limiting/abuse controls, browser end-to-end testing, independent security review and operational monitoring.
