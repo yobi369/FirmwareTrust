@@ -37,7 +37,7 @@ async function createIdentity(){
     const salt=crypto.getRandomValues(new Uint8Array(16)), iv=crypto.getRandomValues(new Uint8Array(12)), iterations=310000;
     const aes=await deriveVaultKey(pass,salt,iterations);
     const ciphertext=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},aes,pkcs8));
-    const vault={format:"FirmwareTrust encrypted private-key vault",version:1,algorithm:"Ed25519",kdf:"PBKDF2-SHA-256",iterations,cipher:"AES-256-GCM",salt:bytesToB64(salt),iv:bytesToB64(iv),ciphertext:bytesToB64(ciphertext),key_id:await keyId(raw),created_at:new Date().toISOString()};
+    const vault={format:"FirmwareTrust encrypted private-key vault",version:1,algorithm:"Ed25519",kdf:"PBKDF2-SHA-256",iterations,cipher:"AES-256-GCM",salt:bytesToB64(salt),iv:bytesToB64(iv),ciphertext:bytesToB64(ciphertext),public_key_spki:bytesToB64(spki),key_id:await keyId(raw),created_at:new Date().toISOString()};
     const label=$("key-label").value.trim()||"FirmwareTrust key";
     download("firmwaretrust-"+label.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")+".ftkey",JSON.stringify(vault,null,2),"application/json");
     download("firmwaretrust-public-key.pem",pem("PUBLIC KEY",spki),"application/x-pem-file");
