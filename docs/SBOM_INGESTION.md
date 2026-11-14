@@ -26,8 +26,8 @@ Severity is not guessed. If the source does not provide a recognized severity, t
 ## Limits and scan status
 
 - Up to 1,000 versioned PURLs are scanned per ingestion.
-- Up to 500 distinct advisory details are hydrated per run.
-- If OSV returns pagination tokens, a component/advisory cap is reached, or some detail lookups fail, the response reports `scan_status: partial`. It does not report a complete scan.
+- Up to five bounded querybatch pagination-continuation rounds are followed per run; up to 500 distinct advisory details are hydrated.
+- If OSV still returns pagination tokens after the bounded continuation rounds, a component/advisory cap is reached, or some detail lookups fail, the response reports `scan_status: partial`. It does not report a complete scan.
 - If OSV is unavailable, the SBOM and component inventory remain saved and the response reports `scan_status: unavailable`.
 - If no versioned PURLs are available, the response reports `scan_status: no_versioned_purls`.
 - A successful OSV scan is vulnerability intelligence, not a guarantee that the firmware is safe or free of vulnerabilities.
