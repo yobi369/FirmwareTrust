@@ -129,3 +129,7 @@ No hosted custody of customer signing private keys, no claim of secure boot, no 
 Owners and admins can invite members using a single-use 256-bit random token. Only its SHA-256 hash is stored. The invitation is bound to a normalized email address and a permitted non-owner role, expires after 1–30 days (7 by default), can be revoked, and can be accepted only by an authenticated account whose email matches. Acceptance creates the organization membership and appends an audit event. Invitation rows cannot be deleted or edited; only acceptance and revocation state can transition.
 
 The Enterprise Console displays pending, accepted, revoked and expired invitations. It reveals the raw invitation link only once and provides a copy action; email delivery is not yet integrated, so an owner/admin must share the link through their own channel.
+
+## CI/CD API tokens
+
+Organization owners/admins can issue scoped API tokens with optional project restrictions and expiry (maximum 365 days). Tokens use a high-entropy ft_live_ prefix, are shown once, and are stored only as SHA-256 hashes. Identity, scopes, project scope and expiry are immutable; revocation is irreversible. The API gateway checks token status and scope on each request and updates last-used time. Current gateway scopes are releases:read and releases:write; additional scope values are reserved until their endpoints are implemented.
