@@ -41,10 +41,9 @@
     list.innerHTML="<p class=muted>Loading SBOM inventory…</p>";findings.innerHTML="<p class=muted>Loading vulnerability findings…</p>";
     try{
       const org=encodeURIComponent(state.organization.id),project=encodeURIComponent(state.project.id);
-      const [documents,rows]=await Promise.all([
-        request("/rest/v1/sbom_documents?select=id,format,spec_version,document_sha256,ingested_at&organization_id=eq."+org+"&project_id=eq."+project+"&order=ingested_at.desc&limit=20"),
-        request("/rest/v1/vulnerability_findings?select=advisory_id,severity,summary,fixed_version,observed_at&organization_id=eq."+org+"&order=observed_at.desc&limit=50")
-      ]);
+      const documents=await request("/rest/v1/sbom_documents?select=id,format,spec_version,document_sha256,ingested_at&organization_id=eq."+org+"&project_id=eq."+project+"&order=ingested_at.desc&limit=20");
+      const sbomIds=(documents||[]).map(item=>item.id);
+      const rows=sbomIds.length?await request("/rest/v1/vulnerability_findings?select=advisory_id,severity,summary,fixed_version,observed_at&sbom_id=in.("+sbomIds.join(",")+")&order=observed_at.desc&limit=50"):[];
       list.innerHTML=documents?.length?documents.map(item=>"<div class=record-item><div><strong>"+esc(String(item.format).toUpperCase())+" · "+esc(item.spec_version||"version unspecified")+"</strong><small>SHA-256 "+esc(item.document_sha256)+"</small></div><span class=status-text>"+new Date(item.ingested_at).toLocaleDateString()+"</span></div>").join(""):"<p class=muted>No SBOM documents ingested for this project.</p>";
       findings.innerHTML=rows?.length?rows.map(item=>"<div class=record-item><div><strong>"+esc(item.advisory_id)+" · "+esc(item.severity||"unrated")+"</strong><small>"+esc(item.summary||"No advisory summary supplied")+"</small>"+(item.fixed_version?"<small>Fixed version: "+esc(item.fixed_version)+"</small>":"")+"</div><span class=status-text>"+new Date(item.observed_at).toLocaleDateString()+"</span></div>").join(""):"<p class=muted>No vulnerability findings recorded for this organization yet.</p>";
     }catch(e){list.innerHTML="<p class=muted>"+esc(e.message)+"</p>";findings.innerHTML="";}
