@@ -54,7 +54,7 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 - [x] Add independent approval/rejection decisions with reviewer identity checks, one decision per reviewer per release/policy, and append-only audit events.
 - [x] Enforce policy evaluation and approval quorum before a release can become approved; direct status updates use the same database guard.
 - [x] Freeze release identity, artifact digest and manifest after review begins; add reviewer-only status update scope without granting metadata mutation.
-- [ ] Complete expanded authenticated integration execution after the review workflow changes.
+- [x] Execute the expanded authenticated integration suite after the review workflow changes; it now verifies service-role-only attestation creation, atomic release-plus-attestation registration, complete SBOM evidence, independent reviewer approval and successful policy-gated publication, in addition to blocking incomplete evidence.
 - [x] Bind Ed25519 verification in the authenticated register-release Edge Function v4 to a service-role-only, atomic release-plus-attestation RPC.
 - [x] Make the signed-manifest policy rule depend on the non-forgeable attestation rather than manifest field presence.
 - [x] Add a policy-gated publication RPC and database transition guard that re-check authorization, attestation and policy evidence.
