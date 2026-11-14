@@ -91,10 +91,11 @@ Deno.serve(async (request: Request) => {
     } else {
       const bearerToken = authorization.replace(/^Bearer\\s+/i, "");
       if (!bearerToken.startsWith("ft_live_")) return respond({ error: "Authentication required" }, 401);
-      apiTokenHash = await hashApiToken(bearerToken);
+      const tokenHash = await hashApiToken(bearerToken);
+      apiTokenHash = tokenHash;
       const tokenQuery = new URLSearchParams({
         select: "id,organization_id,created_by,scopes,project_ids,expires_at,revoked_at",
-        token_hash: "eq." + apiTokenHash,
+        token_hash: "eq." + tokenHash,
         limit: "2"
       });
       const tokenResponse = await fetch(supabaseUrl + "/rest/v1/api_tokens?" + tokenQuery.toString(), { headers: serviceHeaders });
