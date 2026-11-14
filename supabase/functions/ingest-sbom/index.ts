@@ -1,4 +1,5 @@
 import { affectedRange, deduplicateComponents, normalizeCycloneDx, normalizeSpdx, purlHasVersion, severityOf } from "./sbom.ts";
+import { hashApiToken } from "../_shared/api_tokens.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "apikey, authorization, content-type, x-client-info",
@@ -95,9 +96,9 @@ Deno.serve(async (request: Request) => {
     }
     const digestBytes = new Uint8Array(await crypto.subtle.digest("SHA-256", documentBytes));
     const documentHash = Array.from(digestBytes, (byte) => byte.toString(16).padStart(2,"0")).join("");
-    const rpcPath = apiTokenMode ? "/rest/v1/rpc/ingest_sbom_for_api" : "/rest/v1/rpc/ingest_sbom";
+    const rpcPath = apiTokenMode ? "/rest/v1/rpc/ingest_sbom_for_api_with_token" : "/rest/v1/rpc/ingest_sbom";
     const rpcPayload = {
-      ...(apiTokenMode ? { target_actor: actorId } : {}),
+      ...(apiTokenMode ? { target_actor: actorId, target_api_token_hash: apiTokenHash } : {}),
       target_org: body.organization_id, target_project: body.project_id, target_release: body.release_id || null,
       target_format: normalized.format, target_spec_version: normalized.specVersion,
       target_document_sha256: documentHash, target_document: document, target_components: components
@@ -108,7 +109,7 @@ Deno.serve(async (request: Request) => {
     });
     const rpcBody = await rpcResponse.json().catch(() => null);
     if (!rpcResponse.ok) return respond({ error: rpcBody?.message || "SBOM ingestion was rejected by tenant policy" }, rpcResponse.status >= 400 && rpcResponse.status < 500 ? rpcResponse.status : 502);
-    const sbomId = typeof rpcBody === "string" ? rpcBody : rpcBody?.ingest_sbom || rpcBody?.ingest_sbom_for_api;
+    const sbomId = typeof rpcBody === "string" ? rpcBody : rpcBody?.ingest_sbom || rpcBody?.ingest_sbom_for_api || rpcBody?.ingest_sbom_for_api_with_token;
     if (!sbomId) return respond({ error: "SBOM ingestion did not return a document ID" }, 502);
 
     const componentQuery = new URLSearchParams({ select: "id,component_name,version,purl", sbom_id: "eq." + sbomId, limit: "20000" });
