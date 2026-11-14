@@ -72,6 +72,14 @@ begin
     raise exception 'FAIL: initial SBOM scan state was not persisted';
   end if;
 
+  insert into public.release_policies(organization_id,project_id,name,version,rules,enabled,created_by)
+  values(org_a,project_a,'production-baseline',1,
+    '{"require_signed_manifest":true,"require_sbom":true,"require_complete_sbom_scan":true,"block_on_critical":true,"max_high_findings":0,"min_approvals":1}'::jsonb,
+    true,owner_id);
+  if (public.evaluate_release_policy(release_a)->>'decision') <> 'block' then
+    raise exception 'FAIL: policy evaluator did not block a release missing signature, completed scan and independent approval evidence';
+  end if;
+
   insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
   values(org_a,fp_a,'Ed25519',pem_a,'active',owner_id)
   returning id into key_a;
