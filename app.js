@@ -116,9 +116,9 @@ async function loadDemoRelease(){
   const pair=await crypto.subtle.generateKey({name:"Ed25519"},true,["sign","verify"]);
   const publicSpki=new Uint8Array(await crypto.subtle.exportKey("spki",pair.publicKey));
   const raw=new Uint8Array(await crypto.subtle.exportKey("raw",pair.publicKey));
-  const artifactBytes=enc.encode("FIRMWARETRUST SAMPLE ARTIFACT\\nproduct=demo-controller\\nversion=0.1.0\\nbuild=investor-preview\\nThis is synthetic demonstration data, not deployable device firmware.\\n");
+  const artifactBytes=enc.encode("FIRMWARETRUST SAMPLE ARTIFACT\nproduct=demo-controller\nversion=0.1.0\nbuild=investor-preview\nThis is synthetic demonstration data, not deployable device firmware.\n");
   const hash=hex(await digest(artifactBytes)), id=await keyId(raw);
-  const payload={schema_version:"1.0",artifact:{filename:"firmwaretrust-demo-v0.1.0.bin",size_bytes:artifactBytes.length,digest_algorithm:"sha256",digest:hash},signature:{algorithm:"Ed25519",key_id:id},created_at:new Date().toISOString().replace(/\\.\\d{3}Z$/,"Z")};
+  const payload={schema_version:"1.0",artifact:{filename:"firmwaretrust-demo-v0.1.0.bin",size_bytes:artifactBytes.length,digest_algorithm:"sha256",digest:hash},signature:{algorithm:"Ed25519",key_id:id},created_at:new Date().toISOString().replace(/\.\d{3}Z$/,"Z")};
   const signature=new Uint8Array(await crypto.subtle.sign({name:"Ed25519"},pair.privateKey,enc.encode(canonical(payload))));
   const manifest={...payload,signature:{...payload.signature,value:bytesToB64(signature)}};
   const assign=(input,file)=>{const dt=new DataTransfer();dt.items.add(file);input.files=dt.files;};
