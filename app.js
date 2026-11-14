@@ -154,5 +154,6 @@ document.querySelectorAll(".step-tab").forEach(btn=>btn.addEventListener("click"
 $("generate-key").addEventListener("click",createIdentity);
 $("sign-release").addEventListener("click",signRelease);
 $("verify-release").addEventListener("click",verifyRelease);
-$("tamper-test").addEventListener("click",tamperTest);\n$("load-demo").addEventListener("click",loadDemoRelease);
+$("tamper-test").addEventListener("click",tamperTest);
+$("load-demo").addEventListener("click",loadDemoRelease);
 if(!window.isSecureContext||!crypto?.subtle){$("crypto-support").textContent="Secure Web Crypto is unavailable in this browser/context.";}else{$("crypto-support").textContent="Web Crypto available · Ed25519 support will be checked when you generate a key.";}
