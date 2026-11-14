@@ -1,7 +1,7 @@
 "use strict";
 (() => {
   const $ = id => document.getElementById(id);
-  const state = { config:null, session:null, organizations:[], organization:null, projects:[], project:null };
+  const state = { config:null, session:null, organizations:[], organization:null, projects:[], project:null, releases:[], policies:[] };
   const esc = value => String(value ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const slugify = value => value.toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,63);
   const message = (id,text,error=false) => { const el=$(id);el.textContent=text;el.classList.toggle("error",error); };
@@ -34,8 +34,8 @@
   async function selectOrganization(id){state.organization=state.organizations.find(org=>org.id===id)||null;if(!state.organization)return;$("project-tools").classList.remove("hidden");$("project-heading").textContent=state.organization.name+" · Projects";$("project-subtitle").textContent="Create and manage projects inside this organization.";$("release-tools").classList.add("hidden");await loadProjects();}
   async function loadProjects(){const list=$("project-list");list.innerHTML="<p class='muted'>Loading projects…</p>";try{state.projects=await request("/rest/v1/projects?select=id,name,slug,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&order=created_at.desc")||[];if(!state.projects.length){list.innerHTML="<p class='muted'>No projects yet. Create the first project.</p>";return;}list.innerHTML=state.projects.map(project=>"<div class='record-item "+(state.project?.id===project.id?"selected":"")+"'><div><strong>"+esc(project.name)+"</strong><small>"+esc(project.slug)+"</small><small>Project ID: <code>"+esc(project.id)+"</code></small></div><button class='btn ghost' data-project='"+esc(project.id)+"'>Releases</button></div>").join("");list.querySelectorAll("[data-project]").forEach(button=>button.addEventListener("click",()=>selectProject(button.dataset.project)));}catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}}
   async function createProject(){try{const name=$("project-name").value.trim(),slug=slugify($("project-slug").value||name);if(!state.organization||name.length<2||slug.length<2)throw new Error("Choose an organization and enter a valid project name.");await request("/rest/v1/projects",{method:"POST",headers:{"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({organization_id:state.organization.id,name,slug,created_by:state.session.user.id})});$("project-name").value="";$("project-slug").value="";await loadProjects();}catch(e){message("auth-message",e.message,true)}}
-  async function selectProject(id){state.project=state.projects.find(project=>project.id===id)||null;if(!state.project)return;$("release-tools").classList.remove("hidden");$("key-tools").classList.remove("hidden");$("sbom-tools").classList.remove("hidden");$("release-subtitle").textContent="Draft releases for "+state.project.name+". Registry stores metadata and digests, not firmware binaries.";await Promise.all([loadReleases(),loadKeys(),loadSboms()]);await loadProjects();}
-  async function loadReleases(){const list=$("release-list");list.innerHTML="<p class='muted'>Loading release history…</p>";try{const rows=await request("/rest/v1/releases?select=id,version,artifact_name,artifact_sha256,status,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&project_id=eq."+encodeURIComponent(state.project.id)+"&order=created_at.desc")||[];if(!rows.length){list.innerHTML="<p class='muted'>No releases registered for this project.</p>";return;}list.innerHTML=rows.map(release=>"<div class='record-item'><div><strong>"+esc(release.version)+" · "+esc(release.artifact_name)+"</strong><small>"+esc(release.status)+" · SHA-256 "+esc(release.artifact_sha256)+"</small></div><span class='status-text'>"+new Date(release.created_at).toLocaleDateString()+"</span></div>").join("");}catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}}
+  async function selectProject(id){state.project=state.projects.find(project=>project.id===id)||null;if(!state.project)return;$("release-tools").classList.remove("hidden");$("key-tools").classList.remove("hidden");$("sbom-tools").classList.remove("hidden");$("release-subtitle").textContent="Draft releases for "+state.project.name+". Registry stores metadata and digests, not firmware binaries.";await Promise.all([loadReleases(),loadKeys(),loadSboms(),loadPolicies()]);await loadProjects();}
+  async function loadReleases(){const list=$("release-list");list.innerHTML="<p class='muted'>Loading release history…</p>";try{const rows=await request("/rest/v1/releases?select=id,version,artifact_name,artifact_sha256,status,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&project_id=eq."+encodeURIComponent(state.project.id)+"&order=created_at.desc")||[];state.releases=rows;const releaseSelect=$("policy-release");if(releaseSelect)releaseSelect.innerHTML=rows.map(row=>"<option value=\""+esc(row.id)+"\">"+esc(row.version+" · "+row.artifact_name)+"</option>").join("");if(!rows.length){list.innerHTML="<p class='muted'>No releases registered for this project.</p>";return;}list.innerHTML=rows.map(release=>"<div class='record-item'><div><strong>"+esc(release.version)+" · "+esc(release.artifact_name)+"</strong><small>"+esc(release.status)+" · SHA-256 "+esc(release.artifact_sha256)+"</small></div><span class='status-text'>"+new Date(release.created_at).toLocaleDateString()+"</span></div>").join("");}catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}}
   async function loadSboms(){
     const list=$("sbom-list"),findings=$("sbom-findings");
     list.innerHTML="<p class=muted>Loading SBOM inventory…</p>";findings.innerHTML="<p class=muted>Loading vulnerability findings…</p>";
@@ -133,11 +133,38 @@
       $("key-revoke-reason").value="";message("auth-message","Signing key revoked. The revocation was recorded in the audit history.");await loadKeys();
     }catch(e){message("auth-message",e.message,true)}
   }
+
+  async function loadPolicies(){
+    const list=$("policy-list");if(!list)return;
+    list.innerHTML="<p class='muted'>Loading release policies…</p>";
+    try{
+      state.policies=await request("/rest/v1/release_policies?select=id,name,version,project_id,enabled,rules,created_at&organization_id=eq."+encodeURIComponent(state.organization.id)+"&or=(project_id.is.null,project_id.eq."+encodeURIComponent(state.project.id)+")&order=version.desc")||[];
+      list.innerHTML=state.policies.length?state.policies.map(policy=>"<div class='record-item'><div><strong>"+esc(policy.name)+" · v"+esc(policy.version)+"</strong><small>"+(policy.project_id?"Project policy":"Organization policy")+" · "+(policy.enabled?"Enabled":"Disabled")+"</small><small><code>"+esc(JSON.stringify(policy.rules))+"</code></small></div></div>").join(""):"<p class='muted'>No release policies defined for this project.</p>";
+    }catch(e){list.innerHTML="<p class='muted'>"+esc(e.message)+"</p>"}
+  }
+  async function createPolicy(){
+    try{
+      const name=$("policy-name").value.trim(),scope=$("policy-scope").value;
+      let rules;try{rules=JSON.parse($("policy-rules").value)}catch{throw new Error("Policy rules must be valid JSON.");}
+      if(name.length<3||!rules||Array.isArray(rules)||typeof rules!=="object")throw new Error("Enter a policy name and a JSON object of rules.");
+      const existing=state.policies.filter(p=>p.name===name&&p.project_id===(scope==="project"?state.project.id:null));
+      const version=existing.reduce((max,p)=>Math.max(max,Number(p.version)||0),0)+1;
+      await request("/rest/v1/release_policies",{method:"POST",headers:{"Content-Type":"application/json","Prefer":"return=minimal"},body:JSON.stringify({organization_id:state.organization.id,project_id:scope==="project"?state.project.id:null,name,version,rules,enabled:true,created_by:state.session.user.id})});
+      $("policy-name").value="";message("policy-result","Policy version "+version+" saved. Only organization owners/admins can create policies.");await loadPolicies();
+    }catch(e){message("policy-result",e.message,true)}
+  }
+  async function evaluatePolicy(){
+    try{
+      const releaseId=$("policy-release").value;if(!releaseId)throw new Error("Select a release to evaluate.");
+      const result=await request("/rest/v1/rpc/evaluate_release_policy",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({target_release:releaseId})});
+      $("policy-result").textContent=JSON.stringify(result,null,2);
+    }catch(e){message("policy-result",e.message,true)}
+  }
   function clearKeyForm(){$("key-pem").value="";$("key-fingerprint").value="";}
   async function signOut(){try{if(token())await fetch(state.config.url+"/auth/v1/logout",{method:"POST",headers:headers()})}catch{}saveSession(null);state.organization=null;state.project=null;$("workspace").classList.add("hidden");$("auth-card").classList.remove("hidden");message("auth-message","Signed out.");}
   async function init(){try{const response=await fetch("/api/config",{cache:"no-store"});if(!response.ok)throw new Error("Enterprise backend configuration is unavailable.");state.config=await response.json();const saved=sessionStorage.getItem("ft_session");if(saved){try{state.session=JSON.parse(saved);await showWorkspace()}catch{saveSession(null)}}}catch(e){message("auth-message",e.message,true)}}
   $("register-key").addEventListener("click",registerKey);$("clear-key-form").addEventListener("click",clearKeyForm);$("key-pem").addEventListener("change",updateKeyFingerprint);
-  $("sign-in").addEventListener("click",signIn);$("sign-up").addEventListener("click",signUp);$("sign-out").addEventListener("click",signOut);$("create-org").addEventListener("click",createOrganization);$("create-project").addEventListener("click",createProject);$("create-release").addEventListener("click",createRelease);$("ingest-sbom").addEventListener("click",ingestSbom);$("refresh-workspace").addEventListener("click",loadOrganizations);
+  $("sign-in").addEventListener("click",signIn);$("sign-up").addEventListener("click",signUp);$("sign-out").addEventListener("click",signOut);$("create-org").addEventListener("click",createOrganization);$("create-project").addEventListener("click",createProject);$("create-release").addEventListener("click",createRelease);$("create-policy").addEventListener("click",createPolicy);$("evaluate-policy").addEventListener("click",evaluatePolicy);$("ingest-sbom").addEventListener("click",ingestSbom);$("refresh-workspace").addEventListener("click",loadOrganizations);
   $("org-name").addEventListener("input",()=>{if(!$("org-slug").dataset.edited)$("org-slug").value=slugify($("org-name").value)});$("org-slug").addEventListener("input",()=>{$("org-slug").dataset.edited="true"});
   $("project-name").addEventListener("input",()=>{if(!$("project-slug").dataset.edited)$("project-slug").value=slugify($("project-name").value)});$("project-slug").addEventListener("input",()=>{$("project-slug").dataset.edited="true"});
   init();
