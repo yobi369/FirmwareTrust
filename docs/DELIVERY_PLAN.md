@@ -40,7 +40,8 @@ This plan turns the FirmwareTrust feature set into testable delivery gates. Stat
 - [x] Surface SBOM inventory and recent vulnerability findings in the Enterprise Console.
 - [x] Follow OSV querybatch page tokens for up to five bounded continuation rounds; persist partial status if additional pages remain.
 - [ ] Add scheduled rescans, freshness alerts, triage, false-positive exceptions and exception expiry.
-- [ ] Add Edge Function tests for malformed documents, duplicate components, unmatched PURLs, OSV partial/unavailable states and cross-tenant denial.
+- [x] Add Deno unit tests for CycloneDX/SPDX normalization, root/nested components, PURL version detection, deduplication, severity mapping and affected ranges; CI type-checks all three Edge Functions.
+- [ ] Add live Edge Function integration tests for malformed documents, unmatched PURLs, OSV partial/unavailable states and cross-tenant denial.
 
 ### 5. Governance and reporting
 - Add versioned release policies and deterministic evaluation.
