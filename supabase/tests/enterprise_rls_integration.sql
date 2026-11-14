@@ -46,8 +46,11 @@ declare
   api_token_result jsonb;
   api_token_id uuid;
   api_token_id2 uuid;
+  api_token_id3 uuid;
   api_token_secret text;
   api_token_secret2 text;
+  api_token_secret3 text;
+  api_sbom_id uuid;
   api_token_verify_result jsonb;
   stored_token_hash text;
   api_token_verification jsonb;
@@ -248,11 +251,56 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claim.role','authenticated',true);
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  api_token_result := public.create_api_token(
+    org_a,'Integration SBOM token',array['sboms:write'],array[project_a],now()+interval '30 days'
+  );
+  api_token_id3 := (api_token_result->>'id')::uuid;
+  api_token_secret3 := api_token_result->>'token';
+  set local role anon;
+  perform set_config('request.jwt.claim.role','anon',true);
+  api_token_verification := public.verify_api_token(api_token_secret3,'sboms:write',project_a);
+  if api_token_verification->>'token_id' is distinct from api_token_id3::text then
+    raise exception 'FAIL: SBOM API token scope was not verified';
+  end if;
+  set local role service_role;
+  perform set_config('request.jwt.claim.role','service_role',true);
+  select t.token_hash into stored_token_hash from public.api_tokens t where t.id=api_token_id3;
+  if stored_token_hash<>encode(extensions.digest(convert_to(api_token_secret3,'utf8'),'sha256'),'hex') then
+    raise exception 'FAIL: SBOM API token hash was not stored correctly';
+  end if;
+  perform public.ingest_sbom_for_api_with_token(
+    owner_id,org_a,project_a,null,'cyclonedx','1.6',repeat('4',64),
+    jsonb_build_object('bomFormat','CycloneDX','specVersion','1.6','components',
+      jsonb_build_array(jsonb_build_object('name','token-ingested-lib','version','3.2.1','purl','pkg:npm/token-ingested-lib@3.2.1'))),
+    jsonb_build_array(jsonb_build_object('component_name','token-ingested-lib','version','3.2.1',
+      'purl','pkg:npm/token-ingested-lib@3.2.1','license_expression','MIT','hashes','{}'::jsonb)),
+    stored_token_hash
+  );
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  select id into api_sbom_id from public.sbom_documents where organization_id=org_a and document_sha256=repeat('4',64);
+  if api_sbom_id is null or not exists(select 1 from public.audit_events where organization_id=org_a and action='sbom.ingested' and resource_id=api_sbom_id::text) then
+    raise exception 'FAIL: API-token SBOM ingestion was not persisted and audited';
+  end if;
+  perform public.revoke_api_token(org_a,api_token_id3);
+  set local role service_role;
+  perform set_config('request.jwt.claim.role','service_role',true);
   begin
-    perform public.create_api_token(org_a,'Unsupported SBOM token',array['sboms:write'],array[project_a],now()+interval '30 days');
-    raise exception 'FAIL: API token scope without a deployed route was accepted';
-  exception when check_violation then null;
+    perform public.ingest_sbom_for_api_with_token(
+      owner_id,org_a,project_a,null,'cyclonedx','1.6',repeat('5',64),
+      jsonb_build_object('bomFormat','CycloneDX','specVersion','1.6','components',
+        jsonb_build_array(jsonb_build_object('name','revoked-token-lib','version','1.0.0','purl','pkg:npm/revoked-token-lib@1.0.0'))),
+      jsonb_build_array(jsonb_build_object('component_name','revoked-token-lib','version','1.0.0',
+        'purl','pkg:npm/revoked-token-lib@1.0.0','license_expression','MIT','hashes','{}'::jsonb)),
+      stored_token_hash
+    );
+    raise exception 'FAIL: revoked API token authorized SBOM ingestion';
+  exception when insufficient_privilege then null;
   end;
+  set local role authenticated;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
 
   -- Exercise the trusted registration boundary with a disposable, project-scoped API token.
   set local role service_role;
