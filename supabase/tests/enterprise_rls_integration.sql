@@ -15,6 +15,15 @@ declare
   owner_id uuid := 'f1000000-0000-4000-8000-000000000001';
   outsider_id uuid := 'f1000000-0000-4000-8000-000000000002';
   developer_id uuid := 'f1000000-0000-4000-8000-000000000003';
+  raw_a bytea := decode('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f','hex');
+  raw_b bytea := decode('202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f','hex');
+  raw_c bytea := decode('404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f','hex');
+  pem_a text := '-----BEGIN PUBLIC KEY-----' || E'\n' || encode(decode('302a300506032b6570032100000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f','hex'),'base64') || E'\n-----END PUBLIC KEY-----';
+  pem_b text := '-----BEGIN PUBLIC KEY-----' || E'\n' || encode(decode('302a300506032b6570032100202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f','hex'),'base64') || E'\n-----END PUBLIC KEY-----';
+  pem_c text := '-----BEGIN PUBLIC KEY-----' || E'\n' || encode(decode('302a300506032b6570032100404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f','hex'),'base64') || E'\n-----END PUBLIC KEY-----';
+  fp_a text := left(encode(extensions.digest(decode('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f','hex'),'sha256'),'hex'),16);
+  fp_b text := left(encode(extensions.digest(decode('202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f','hex'),'sha256'),'hex'),16);
+  fp_c text := left(encode(extensions.digest(decode('404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f','hex'),'sha256'),'hex'),16);
   org_a uuid;
   org_b uuid;
   key_a uuid;
@@ -28,28 +37,46 @@ begin
   end if;
 
   insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
-  values(org_a,'fttestfingerprint0001','Ed25519','-----BEGIN PUBLIC KEY-----\nZmFrZQ==\n-----END PUBLIC KEY-----','active',owner_id)
+  values(org_a,fp_a,'Ed25519',pem_a,'active',owner_id)
   returning id into key_a;
+
+  begin
+    insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
+    values(org_a,fp_a,'Ed25519',pem_b,'active',owner_id);
+    raise exception 'FAIL: fingerprint mismatch was accepted';
+  exception when raise_exception then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like '%fingerprint does not match%' then raise; end if;
+  end;
+
+  begin
+    insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
+    values(org_a,fp_a,'Ed25519','-----BEGIN PRIVATE KEY-----' || E'\n' || 'ZmFrZQ==' || E'\n-----END PRIVATE KEY-----','active',owner_id);
+    raise exception 'FAIL: private key PEM was accepted';
+  exception when raise_exception then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like '%private keys are never accepted%' then raise; end if;
+  end;
+
+  begin
+    insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
+    values(org_a,fp_a,'Ed25519',pem_a,'active',owner_id);
+    raise exception 'FAIL: duplicate active fingerprint was accepted';
+  exception when unique_violation then null;
+  end;
 
   insert into public.organization_memberships(organization_id,user_id,role)
   values(org_a,developer_id,'developer');
 
   begin
-    insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
-    values(org_a,'fttestfingerprint0001','Ed25519','-----BEGIN PUBLIC KEY-----\nZHVwbA==\n-----END PUBLIC KEY-----','active',owner_id);
-    raise exception 'FAIL: duplicate active fingerprint was accepted';
-  exception when unique_violation then null;
-  end;
-
-  begin
-    update public.signing_keys set public_key_pem='-----BEGIN PUBLIC KEY-----\nY2hhbmdlZA==\n-----END PUBLIC KEY-----' where id=key_a;
+    update public.signing_keys set public_key_pem=pem_b where id=key_a;
     raise exception 'FAIL: immutable public key material was changed';
   exception when raise_exception then
     if sqlerrm like 'FAIL:%' then raise; end if;
     if sqlerrm not like '%immutable%' then raise; end if;
   end;
 
-  key_b := public.rotate_signing_key(org_a,key_a,'fttestfingerprint0002','-----BEGIN PUBLIC KEY-----\nZmFrZTI=\n-----END PUBLIC KEY-----','Ed25519');
+  key_b := public.rotate_signing_key(org_a,key_a,fp_b,pem_b,'Ed25519');
   if not exists(select 1 from public.signing_keys where id=key_a and status='rotated') then
     raise exception 'FAIL: predecessor not marked rotated';
   end if;
@@ -72,7 +99,7 @@ begin
   end;
   begin
     insert into public.signing_keys(organization_id,key_fingerprint,algorithm,public_key_pem,status,created_by)
-    values(org_a,'fttestfingerprint0003','Ed25519','-----BEGIN PUBLIC KEY-----\nZGV2\n-----END PUBLIC KEY-----','active',developer_id);
+    values(org_a,fp_c,'Ed25519',pem_c,'active',developer_id);
     raise exception 'FAIL: developer role registered a signing key';
   exception when insufficient_privilege then null;
   end;
